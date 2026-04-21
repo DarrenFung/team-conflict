@@ -133,4 +133,30 @@
   .glass-panel {
     @apply border border-white/40 bg-white/45 backdrop-blur-md dark:border-white/20 dark:bg-black/20;
   }
+
+  /* Intake-specific glassmorphism */
+  .intake-glass {
+    @apply border border-white/50 bg-white/40 shadow-sm backdrop-blur-xl;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.7) inset,
+      0 8px 24px rgba(0, 60, 30, 0.06);
+  }
+
+  .intake-option {
+    @apply w-full rounded-xl border border-white/50 bg-white/40 px-4 py-3.5 text-left text-sm font-medium
+      text-foreground backdrop-blur-xl transition-all
+      hover:border-primary/40 hover:bg-primary/8 hover:shadow-sm
+      active:scale-[0.99] active:bg-primary/12
+      disabled:cursor-not-allowed disabled:opacity-50;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  }
+
+  .intake-option-selected {
+    @apply border-primary/60 bg-primary/10 text-foreground
+      hover:bg-primary/15
+      active:bg-primary/18;
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.5) inset,
+      0 0 0 1px oklch(0.57 0.17 153 / 0.3);
+  }
 }

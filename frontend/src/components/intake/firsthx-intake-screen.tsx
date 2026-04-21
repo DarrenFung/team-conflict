@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { ChevronLeft, CheckCircle2 } from "lucide-react";
+import { useRef, useState, useTransition } from "react";
+import { ChevronLeft, CheckCircle2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { submitAnswer, goBack } from "@/app/actions/firsthx";
 import type { IntakeContent, IntakeOption, IntakeState } from "@/lib/firsthx";
@@ -14,6 +13,8 @@ type Props = {
   initError: string | null;
 };
 
+type Step = "reason" | "questions";
+
 function buildSelectedOptions(
   content: IntakeContent,
   selectedIds: number[],
@@ -23,7 +24,92 @@ function buildSelectedOptions(
     .map(({ id, displayText, originalText }) => ({ id, displayText, originalText }));
 }
 
+function FirstHxBadge() {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-black/8 bg-black/5 px-2.5 py-1 text-[11px] font-medium text-foreground/50 tracking-wide">
+      <svg width="9" height="9" viewBox="0 0 10 10" className="shrink-0" aria-hidden>
+        <circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" strokeWidth="1.1" />
+        <path d="M5 2.5v2.8L6.8 6.5" stroke="currentColor" strokeWidth="1.1" fill="none" strokeLinecap="round" />
+      </svg>
+      Powered by <strong className="text-foreground/70">firstHx</strong>
+    </span>
+  );
+}
+
+// ── Reason-for-visit screen ───────────────────────────────────
+function ReasonScreen({
+  greetingName,
+  onContinue,
+}: {
+  greetingName: string;
+  onContinue: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const trimmed = reason.trim();
+
+  return (
+    <main className="mx-auto flex min-h-svh w-full max-w-2xl flex-col px-4 py-8 sm:px-6 lg:py-12">
+      {/* Header */}
+      <header className="mb-8 flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-primary/70">
+            Intake Assessment
+          </p>
+          <h1 className="mt-0.5 text-lg font-semibold text-foreground">
+            Hi {greetingName}
+          </h1>
+        </div>
+        <FirstHxBadge />
+      </header>
+
+      {/* Card */}
+      <div
+        className="intake-glass flex flex-grow flex-col gap-5 rounded-2xl p-6 sm:p-8"
+      >
+        <div>
+          <h2 className="text-[22px] font-semibold leading-snug tracking-tight text-foreground">
+            What&apos;s going on today?
+          </h2>
+          <p className="mt-1.5 text-sm text-muted-foreground">
+            A few words is plenty — we&apos;ll ask follow-up questions from there.
+          </p>
+        </div>
+
+        {/* Text area */}
+        <div
+          className="relative flex-grow cursor-text rounded-xl border border-white/60 bg-white/30 p-4 transition-colors focus-within:border-primary/40 focus-within:bg-white/50"
+          onClick={() => textareaRef.current?.focus()}
+        >
+          <textarea
+            ref={textareaRef}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Describe what you're experiencing…"
+            className="h-full min-h-[140px] w-full resize-none bg-transparent text-[16px] leading-relaxed text-foreground placeholder:text-foreground/35 focus:outline-none"
+          />
+        </div>
+
+        {/* Continue */}
+        <div className="flex items-center justify-end pt-1">
+          <Button
+            type="button"
+            size="lg"
+            disabled={!trimmed}
+            onClick={() => onContinue(trimmed)}
+            className="hover:bg-primary/90 active:scale-[0.98] active:bg-primary/80"
+          >
+            Continue
+          </Button>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+// ── Questions screen ──────────────────────────────────────────
 export function FirstHxIntakeScreen({ greetingName, initialState, initError }: Props) {
+  const [step, setStep] = useState<Step>("reason");
   const [state, setState] = useState<IntakeState | null>(initialState);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(initError);
@@ -80,97 +166,134 @@ export function FirstHxIntakeScreen({ greetingName, initialState, initError }: P
     });
   }
 
+  // Show reason-for-visit screen first
+  if (step === "reason") {
+    return (
+      <ReasonScreen
+        greetingName={greetingName}
+        onContinue={() => setStep("questions")}
+      />
+    );
+  }
+
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-[680px] flex-col gap-6 px-4 py-6 md:px-6 lg:py-10">
-      <section className="glass-panel flex items-center justify-between gap-4 rounded-2xl p-4 md:p-5">
+    <main className="mx-auto flex min-h-svh w-full max-w-2xl flex-col px-4 py-8 sm:px-6 lg:py-12">
+      {/* Header row */}
+      <header className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-foreground md:text-2xl">Intake Assessment</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Welcome, {greetingName}. Answer each question to complete your assessment.
+          <p className="text-xs font-semibold uppercase tracking-widest text-primary/70">
+            Intake Assessment
           </p>
+          <h1 className="mt-0.5 text-lg font-semibold text-foreground">
+            Hi {greetingName}
+          </h1>
         </div>
-      </section>
+        <FirstHxBadge />
+      </header>
 
+      {/* Content area */}
       {error ? (
-        <Card className="glass-panel border-white/35 shadow-none">
-          <CardContent className="py-10 text-center">
-            <p className="text-sm text-destructive">{error}</p>
-          </CardContent>
-        </Card>
+        <div className="intake-glass flex items-start gap-3 rounded-2xl p-5 text-sm text-destructive">
+          <AlertCircle className="mt-0.5 size-4 shrink-0" />
+          <p>{error}</p>
+        </div>
       ) : isCompleted ? (
-        <Card className="glass-panel border-white/35 shadow-none">
-          <CardContent className="flex flex-col items-center gap-4 py-14">
-            <CheckCircle2 className="size-12 text-primary" />
-            <div className="text-center">
-              <p className="text-lg font-semibold text-foreground">Assessment Complete</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Thank you for completing the intake assessment.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="intake-glass flex flex-col items-center gap-4 rounded-2xl px-6 py-16 text-center">
+          <CheckCircle2 className="size-10 text-primary" />
+          <div>
+            <p className="text-base font-semibold text-foreground">Assessment Complete</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Thank you for completing the intake assessment.
+            </p>
+          </div>
+        </div>
       ) : content ? (
-        <Card className="glass-panel border-white/35 shadow-none">
-          <CardHeader>
-            <CardTitle className="text-base font-medium leading-relaxed">{content.title}</CardTitle>
+        <div className="intake-glass flex flex-col gap-6 rounded-2xl p-6 sm:p-8">
+          {/* Question */}
+          <div className="space-y-1.5">
+            <h2 className="text-[17px] font-semibold leading-snug text-foreground">
+              {content.title}
+            </h2>
             {content.helperText && (
-              <CardDescription>{content.helperText}</CardDescription>
+              <p className="text-sm text-muted-foreground">{content.helperText}</p>
             )}
-          </CardHeader>
-          <CardContent className="space-y-5">
-            <div className="space-y-2">
-              {content.options.map((option) => {
-                const isSelected = selectedIds.includes(option.id);
-                return (
-                  <button
-                    key={option.id}
-                    type="button"
-                    onClick={() => toggleOption(option.id, option.deselectOtherAnswers)}
-                    disabled={isPending}
-                    className={cn(
-                      "w-full rounded-xl border px-4 py-3 text-left text-sm transition-colors",
-                      isSelected
-                        ? "border-primary bg-primary/10 font-medium text-foreground"
-                        : "border-white/35 bg-white/40 text-foreground hover:bg-primary/5 dark:bg-black/20",
-                      isPending && "cursor-not-allowed opacity-60",
-                    )}
-                  >
-                    {option.displayText}
-                  </button>
-                );
-              })}
-            </div>
+            {isMulti && (
+              <p className="text-xs text-muted-foreground/70">Select all that apply</p>
+            )}
+          </div>
 
-            <div className="flex items-center gap-2">
-              {content.backAllowed && (
-                <Button
+          {/* Options */}
+          <div className="flex flex-col gap-2">
+            {content.options.map((option) => {
+              const isSelected = selectedIds.includes(option.id);
+              return (
+                <button
+                  key={option.id}
                   type="button"
-                  variant="outline"
-                  onClick={handleBack}
+                  onClick={() => toggleOption(option.id, option.deselectOtherAnswers)}
                   disabled={isPending}
-                  className="border-primary/35 bg-white/55 text-foreground hover:bg-primary/10 active:bg-primary/20"
+                  className={cn(
+                    "intake-option",
+                    isSelected && "intake-option-selected",
+                  )}
                 >
-                  <ChevronLeft className="mr-1 size-4" />
-                  Back
-                </Button>
-              )}
+                  <span className="flex items-center gap-3">
+                    <span
+                      className={cn(
+                        "flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors",
+                        isSelected
+                          ? "border-primary bg-primary"
+                          : "border-foreground/25 bg-transparent",
+                      )}
+                    >
+                      {isSelected && (
+                        <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden>
+                          <path d="M1 4l2.2 2.2L7 1.5" stroke="#fff" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
+                    </span>
+                    {option.displayText}
+                  </span>
+                  {option.helperText && (
+                    <span className="mt-1 block pl-7 text-xs text-muted-foreground">
+                      {option.helperText}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-3 pt-1">
+            {content.backAllowed && (
               <Button
                 type="button"
-                onClick={handleSubmit}
-                disabled={isPending || !canSubmit}
-                className="ml-auto bg-primary text-primary-foreground hover:bg-primary/85 active:scale-[0.99] active:bg-primary/75"
+                variant="outline"
+                size="lg"
+                onClick={handleBack}
+                disabled={isPending}
+                className="border-white/60 bg-white/50 backdrop-blur-sm hover:border-primary/30 hover:bg-white/70 active:scale-[0.98] active:bg-white/60"
               >
-                {isPending ? "Loading..." : "Next"}
+                <ChevronLeft className="mr-1 size-4" />
+                Back
               </Button>
-            </div>
-          </CardContent>
-        </Card>
+            )}
+            <Button
+              type="button"
+              size="lg"
+              onClick={handleSubmit}
+              disabled={isPending || !canSubmit}
+              className="ml-auto hover:bg-primary/90 active:scale-[0.98] active:bg-primary/80"
+            >
+              {isPending ? "Loading…" : "Continue"}
+            </Button>
+          </div>
+        </div>
       ) : (
-        <Card className="glass-panel border-white/35 shadow-none">
-          <CardContent className="py-10 text-center">
-            <p className="text-sm text-muted-foreground">Starting your intake session...</p>
-          </CardContent>
-        </Card>
+        <div className="intake-glass flex items-center justify-center rounded-2xl px-6 py-16">
+          <p className="text-sm text-muted-foreground">Starting your session…</p>
+        </div>
       )}
     </main>
   );
