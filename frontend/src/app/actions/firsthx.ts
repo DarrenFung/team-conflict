@@ -1,6 +1,16 @@
 "use server";
 
-import { answerQuestion, backQuestion, type IntakeOption, type IntakeState } from "@/lib/firsthx";
+import {
+  answerQuestion,
+  backQuestion,
+  startIntake as startIntakeLib,
+  type IntakeOption,
+  type IntakeState,
+} from "@/lib/firsthx";
+
+export async function startIntakeSession(userId: string): Promise<IntakeState> {
+  return startIntakeLib(userId);
+}
 
 export type AnswerData =
   | { kind: "options"; options: Pick<IntakeOption, "id" | "displayText" | "originalText">[] }
