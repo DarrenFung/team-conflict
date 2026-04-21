@@ -11,7 +11,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@ai-sdk/google-vertex": "^4.0.112",
@@ -44,6 +45,7 @@
     "eslint-config-next": "16.2.4",
     "prisma": "^6",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

@@ -7,7 +7,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Mirrors Clerk user identity. `id` is the Clerk user id (cus_...).
 model User {
   id         String      @id
   email      String      @unique
@@ -48,4 +47,11 @@ model Document {
 
   @@index([userId])
   @@index([encounterId])
+}
+
+model Resource {
+  id      Int    @id @default(autoincrement())
+  title   String
+  content String
+  type    String // "article" | "guidance"
 }
