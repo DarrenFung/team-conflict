@@ -1,29 +1,14 @@
-output "instance_connection_name" {
-  description = "Full connection name: project:region:instance. Used by @google-cloud/cloud-sql-connector."
-  value       = google_sql_database_instance.main.connection_name
+output "vercel_service_account_email" {
+  description = "Set as GCP_SERVICE_ACCOUNT_EMAIL in the Vercel project's env vars."
+  value       = google_service_account.vercel_vertex.email
 }
 
-output "instance_public_ip" {
-  description = "Public IP address of the Cloud SQL instance (for local psql testing)."
-  value       = google_sql_database_instance.main.public_ip_address
+output "vercel_workload_identity_audience" {
+  description = "Set as GCP_WORKLOAD_IDENTITY_AUDIENCE in the Vercel project's env vars."
+  value       = "//iam.googleapis.com/${google_iam_workload_identity_pool_provider.vercel_oidc.name}"
 }
 
-output "database_name" {
-  description = "Name of the Postgres database."
-  value       = google_sql_database.main.name
-}
-
-output "app_user_name" {
-  description = "Postgres username the Next.js app connects as."
-  value       = google_sql_user.app.name
-}
-
-output "app_user_password_secret_name" {
-  description = "Secret Manager secret holding the app user's password. Retrieve with: gcloud secrets versions access latest --secret=<this>"
-  value       = google_secret_manager_secret.app_user_password.secret_id
-}
-
-output "admin_password_secret_name" {
-  description = "Secret Manager secret holding the built-in postgres user's password. Retrieve with: gcloud secrets versions access latest --secret=<this>"
-  value       = google_secret_manager_secret.postgres_admin.secret_id
+output "project_number" {
+  description = "GCP project number. Useful for building resource strings manually."
+  value       = data.google_project.current.number
 }

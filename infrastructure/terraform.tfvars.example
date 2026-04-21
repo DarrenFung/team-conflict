@@ -1,12 +1,12 @@
 # Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
 
-project_id = "gsv-hack-26-conflict"
+project_id          = "gsv-hack-26-conflict"
+vercel_team_slug    = "your-team-slug"
+vercel_project_name = "your-vercel-project-name"
 
 # Optional overrides (defaults shown):
-# region               = "northamerica-northeast2"
-# instance_name        = "team-conflict-db"
-# database_name        = "team_conflict"
-# tier                 = "db-g1-small"
-# postgres_version     = "POSTGRES_17"
-# disk_size_gb         = 10
-# deletion_protection  = true
+# region                    = "us-central1"
+# vercel_environments       = ["production"]
+# vercel_pool_id            = "vercel-pool"
+# vercel_provider_id        = "vercel-oidc"
+# vercel_service_account_id = "vercel-vertex"
