@@ -50,3 +50,6 @@ frontend/.vercel
 
 .terraform
 terraform.tfvars
+
+# scraped article content (large, seeded into DB)
+backend/scrapers/health811/.articles/

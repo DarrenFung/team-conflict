@@ -1,6 +1,7 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { AiIntakeScreen } from "@/components/intake/ai-intake-screen";
 import { FirstHxStandaloneScreen } from "@/modules/firsthx";
+import { claimGuestIfPresent } from "@/app/actions/claim";
 
 type IntakeProvider = "ai-sdk" | "firsthx";
 
@@ -14,6 +15,10 @@ export default async function AppPage({
 }: {
   searchParams: Promise<{ intake?: string }>;
 }) {
+  // If the user just signed up/in after a guest session, attach their guest
+  // encounters and attachments to the Clerk account before rendering.
+  await claimGuestIfPresent();
+
   const user = await currentUser();
   const greetingName = user?.firstName ?? "there";
   const { intake } = await searchParams;

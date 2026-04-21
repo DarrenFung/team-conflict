@@ -7,20 +7,61 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Mirrors Clerk user identity. `id` is the Clerk user id (cus_...).
+// A user in our system. Two populations live here:
+//   - Guests: clerkId and email are null. Identified by an HttpOnly
+//     `guestUserId` cookie pinned to this row's `id`.
+//   - Claimed users: clerkId is set once the guest signs up/signs in. At claim
+//     time their pre-sign-up encounters/documents are reparented onto a
+//     pre-existing claimed row if one exists, or the guest row is promoted.
+// `id` is a stable cuid — everything downstream (encounters, documents) keys
+// off it and doesn't care which population the user is in.
 model User {
-  id         String      @id
-  email      String      @unique
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  encounters Encounter[]
+  id          String       @id @default(cuid())
+  clerkId     String?      @unique
+  email       String?      @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  encounters  Encounter[]
+  attachments Attachment[]
 }
 
 model Encounter {
-  id        String   @id @default(cuid())
-  userId    String
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String       @id @default(cuid())
+  userId      String
+  createdAt   DateTime     @default(now())
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
 
   @@index([userId])
+}
+
+// A file uploaded by a user and stored in Vercel Blob. Optionally scoped to
+// a specific encounter (e.g. a lab result gathered for today's visit); if
+// encounterId is null the attachment belongs to the user in general (e.g.
+// insurance card, prior imaging).
+// `url` is the signed blob URL (private access) and `pathname` is the blob
+// key used for deletion via @vercel/blob `del()`.
+model Attachment {
+  id               String     @id @default(cuid())
+  userId           String
+  encounterId      String?
+  url              String
+  pathname         String
+  originalFilename String
+  contentType      String
+  sizeBytes        Int
+  description      String
+  createdAt        DateTime   @default(now())
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  encounter        Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([encounterId])
+}
+
+model Resource {
+  id      Int    @id @default(autoincrement())
+  title   String
+  content String
+  type    String // "article" | "guidance"
 }

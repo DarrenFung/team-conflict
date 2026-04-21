@@ -187,6 +187,7 @@ export function FirstHxStandaloneScreen({ greetingName }: Props) {
       <div className="intake-glass flex flex-grow flex-col gap-2 rounded-2xl p-6 sm:p-8">
         <FirstHxPanel
           args={{ symptomHint: reason }}
+          encounterId={null}
           onComplete={(r) => {
             setResult(r);
             setStep("complete");

@@ -1,6 +1,5 @@
 "use client";
-
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -14,7 +13,7 @@ import { PostIntakeAccountPrompt } from "@/components/intake/post-intake-account
 import { createEncounter } from "@/app/actions/encounter";
 import { NavaraTopNav } from "@/components/layout/navara-top-nav";
 
-const COMPLETION_MARKER = "[INTAKE_COMPLETE]";
+const COMPLETION_MARKER = "[COMPLETE]";
 
 type Props = {
   greetingName: string;
@@ -205,21 +204,16 @@ function findPendingToolCall(messages: UIMessage[]): PendingToolCall | null {
   return null;
 }
 
-function messageDisplayText(message: UIMessage): string {
-  return message.parts
-    .filter((p): p is Extract<MessagePart, { type: "text" }> => p.type === "text")
-    .map((p) => p.text ?? "")
-    .join("")
-    .replace(COMPLETION_MARKER, "")
-    .trim();
-}
-
 function ChatHistory({
   messages,
   isStreaming,
+  moduleResults,
 }: {
   messages: UIMessage[];
   isStreaming: boolean;
+  // Structured results keyed by toolCallId so modules can render a richer
+  // summary than the fallback chip. Only populated for the current session.
+  moduleResults: Record<string, unknown>;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -227,28 +221,77 @@ function ChatHistory({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isStreaming]);
 
+  // Walk parts in order so a message like `[text, tool, text]` renders as
+  // two separate text bubbles with a "module completed" chip between them,
+  // instead of one merged bubble that hides the tool call.
+  const nodes: ReactNode[] = [];
+  for (const m of messages) {
+    let buffer = "";
+    let bubbleIdx = 0;
+    const flush = () => {
+      const text = buffer.replace(COMPLETION_MARKER, "").trim();
+      buffer = "";
+      if (!text) return;
+      nodes.push(
+        <div
+          key={`${m.id}-b${bubbleIdx}`}
+          className={cn(
+            "max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed shadow-sm",
+            m.role === "user"
+              ? "ml-auto bg-primary text-primary-foreground shadow-[0_2px_10px_rgba(24,95,165,0.2)]"
+              : "mr-auto border border-[rgba(24,95,165,0.15)] bg-white text-foreground",
+          )}
+        >
+          <p className="whitespace-pre-wrap">{text}</p>
+        </div>,
+      );
+      bubbleIdx++;
+    };
+
+    m.parts.forEach((part, pIdx) => {
+      if (part.type === "text") {
+        buffer += (part as Extract<MessagePart, { type: "text" }>).text ?? "";
+        return;
+      }
+      const toolName = partToolName(part);
+      if (!toolName) return;
+      const p = part as { state?: string; toolCallId?: string };
+      // Only render the module once it's actually finished. While it's still
+      // awaiting input we render the module itself below the transcript.
+      if (p.state !== "output-available" && p.state !== "output-error") return;
+      flush();
+      const mod = findModule(toolName);
+      const result = p.toolCallId ? moduleResults[p.toolCallId] : undefined;
+      // Prefer the module's own summary renderer when we still have the raw
+      // result in memory; fall back to a compact completion chip otherwise.
+      const customSummary =
+        mod?.renderCompletedSummary && result !== undefined
+          ? mod.renderCompletedSummary(result)
+          : null;
+      if (customSummary) {
+        nodes.push(<Fragment key={`${m.id}-t${pIdx}`}>{customSummary}</Fragment>);
+        return;
+      }
+      const label = mod?.transcriptLabel ?? toolName;
+      nodes.push(
+        <div
+          key={`${m.id}-t${pIdx}`}
+          className="mx-auto flex items-center gap-1.5 rounded-full border border-[rgba(24,95,165,0.15)] bg-white/70 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm"
+        >
+          <CheckCircle2 className="size-3 text-primary" />
+          <span>{label} completed</span>
+        </div>,
+      );
+    });
+    flush();
+  }
+
   return (
     <div
       ref={scrollRef}
       className="flex max-h-[45vh] flex-col gap-3 overflow-y-auto pr-1"
     >
-      {messages.map((m) => {
-        const text = messageDisplayText(m);
-        if (!text) return null;
-        return (
-          <div
-            key={m.id}
-            className={cn(
-              "max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed shadow-sm",
-              m.role === "user"
-                ? "ml-auto bg-primary text-primary-foreground shadow-[0_2px_10px_rgba(24,95,165,0.2)]"
-                : "mr-auto border border-[rgba(24,95,165,0.15)] bg-white text-foreground",
-            )}
-          >
-            <p className="whitespace-pre-wrap">{text}</p>
-          </div>
-        );
-      })}
+      {nodes}
       {isStreaming && (
         <div className="mr-auto rounded-2xl border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] px-4 py-2.5 text-sm text-muted-foreground">
           Thinking…
@@ -268,12 +311,17 @@ function ChatScreen({
   const [input, setInput] = useState("");
   const [encounterError, setEncounterError] = useState<Error | null>(null);
   const [encounterId, setEncounterId] = useState<string | null>(null);
+  const [moduleResults, setModuleResults] = useState<Record<string, unknown>>({});
+  // The transport body is a closure built once with `useChat`; state changes
+  // don't refresh it. A ref is the stable container the closure can read
+  // from on every request. State is kept in parallel for UI/module props.
+  const encounterIdRef = useRef<string | null>(null);
   const seededRef = useRef(false);
 
   const { messages, sendMessage, status, error, addToolOutput } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/chat",
-      body: () => ({ encounterId }),
+      body: () => ({ encounterId: encounterIdRef.current }),
     }),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
   });
@@ -284,6 +332,7 @@ function ChatScreen({
     seededRef.current = true;
     createEncounter()
       .then(({ id }) => {
+        encounterIdRef.current = id;
         setEncounterId(id);
         sendMessage({ text: initialReason });
       })
@@ -331,7 +380,11 @@ function ChatScreen({
           </div>
         ) : (
           <div className="intake-glass flex flex-grow flex-col gap-4 rounded-2xl p-6 sm:p-8">
-            <ChatHistory messages={messages} isStreaming={isStreaming} />
+            <ChatHistory
+              messages={messages}
+              isStreaming={isStreaming}
+              moduleResults={moduleResults}
+            />
 
             {isComplete ? (
               <div className="flex flex-col gap-4 border-t border-[rgba(24,95,165,0.12)] pt-6">
@@ -349,7 +402,9 @@ function ChatScreen({
             ) : pending && activeModule ? (
               <activeModule.Component
                 args={pending.input}
+                encounterId={encounterId}
                 onComplete={(result) => {
+                  setModuleResults((prev) => ({ ...prev, [pending.toolCallId]: result }));
                   addToolOutput({
                     tool: pending.toolName,
                     toolCallId: pending.toolCallId,
