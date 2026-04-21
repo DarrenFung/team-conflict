@@ -106,8 +106,17 @@ export async function POST(req: Request) {
     where: { id: encounterId },
     select: { userId: true },
   });
-  if (!encounter || encounter.userId !== user.id) {
-    return new Response("Encounter not found", { status: 404 });
+  if (!encounter) {
+    console.error(
+      `[api/chat] encounter ${encounterId} not found (request user ${user.id})`,
+    );
+    return new Response(`Encounter ${encounterId} not found`, { status: 404 });
+  }
+  if (encounter.userId !== user.id) {
+    console.error(
+      `[api/chat] encounter ${encounterId} belongs to ${encounter.userId}, request user is ${user.id}`,
+    );
+    return new Response("Encounter belongs to a different user", { status: 403 });
   }
 
   const result = streamText({
