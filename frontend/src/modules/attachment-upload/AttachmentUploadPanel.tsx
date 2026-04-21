@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { AlertCircle, FileText, Loader2, X } from "lucide-react";
+import { upload } from "@vercel/blob/client";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getUploadUrl, recordAttachment } from "@/app/actions/attachments";
+import { recordAttachment } from "@/app/actions/attachments";
 import type { ModuleComponentProps } from "../types";
 import type { AttachmentUploadArgs, AttachmentUploadResult } from "./index";
 
@@ -41,23 +42,16 @@ export function AttachmentUploadPanel({ args, onComplete, encounterId }: Props) 
 
   async function uploadOne(file: File, description: string): Promise<UploadedFile> {
     const contentType = file.type || "application/octet-stream";
-    const { signedUrl, objectPath } = await getUploadUrl({
-      filename: file.name,
+    const blob = await upload(file.name, file, {
+      access: "private",
+      handleUploadUrl: "/api/attachments/upload",
       contentType,
     });
 
-    const putRes = await fetch(signedUrl, {
-      method: "PUT",
-      headers: { "Content-Type": contentType },
-      body: file,
-    });
-    if (!putRes.ok) {
-      throw new Error(`Upload of "${file.name}" failed (${putRes.status})`);
-    }
-
     const attachment = await recordAttachment({
       encounterId,
-      objectPath,
+      url: blob.url,
+      pathname: blob.pathname,
       originalFilename: file.name,
       contentType,
       sizeBytes: file.size,

@@ -35,17 +35,18 @@ model Encounter {
   @@index([userId])
 }
 
-// A file uploaded by a user and stored in a GCS bucket. Optionally scoped to
+// A file uploaded by a user and stored in Vercel Blob. Optionally scoped to
 // a specific encounter (e.g. a lab result gathered for today's visit); if
 // encounterId is null the attachment belongs to the user in general (e.g.
 // insurance card, prior imaging).
-// (bucket, objectPath) is the address of the underlying object.
+// `url` is the signed blob URL (private access) and `pathname` is the blob
+// key used for deletion via @vercel/blob `del()`.
 model Attachment {
   id               String     @id @default(cuid())
   userId           String
   encounterId      String?
-  bucket           String
-  objectPath       String
+  url              String
+  pathname         String
   originalFilename String
   contentType      String
   sizeBytes        Int
