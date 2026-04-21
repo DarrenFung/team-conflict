@@ -151,3 +151,11 @@ resource "google_sql_user" "app_iam" {
     google_sql_database.main,
   ]
 }
+
+# =============================================================================
+# Service account key (surfaced once via `terraform output` for Vercel)
+# =============================================================================
+
+resource "google_service_account_key" "app" {
+  service_account_id = google_service_account.app.name
+}
