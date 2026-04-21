@@ -5,9 +5,10 @@ const isPublicRoute = createRouteMatcher([
   "/app",
   "/sign-in(.*)",
   "/sign-up(.*)",
-  // Guests hit /api/chat too — the route handles its own user resolution via
+  // Guests hit these too — the routes handle their own user resolution via
   // getOrCreateActiveUser (Clerk-authed users or cookie-backed guests).
   "/api/chat",
+  "/api/attachments/upload",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
