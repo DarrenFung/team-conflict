@@ -1,25 +1,41 @@
 import { currentUser } from "@clerk/nextjs/server";
+import { AiIntakeScreen } from "@/components/intake/ai-intake-screen";
 import { FirstHxIntakeScreen } from "@/components/intake/firsthx-intake-screen";
 import { startIntake, type IntakeState } from "@/lib/firsthx";
 
-export default async function AppPage() {
+type IntakeProvider = "ai-sdk" | "firsthx";
+
+function resolveProvider(override: string | undefined): IntakeProvider {
+  if (override === "ai-sdk" || override === "firsthx") return override;
+  return process.env.INTAKE_PROVIDER === "firsthx" ? "firsthx" : "ai-sdk";
+}
+
+export default async function AppPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ intake?: string }>;
+}) {
   const user = await currentUser();
   const greetingName = user?.firstName ?? "there";
+  const { intake } = await searchParams;
+  const provider = resolveProvider(intake);
 
-  let initialState: IntakeState | null = null;
-  let initError: string | null = null;
-
-  try {
-    initialState = await startIntake(user?.id ?? crypto.randomUUID());
-  } catch (err) {
-    initError = err instanceof Error ? err.message : "Failed to start intake session";
+  if (provider === "firsthx") {
+    let initialState: IntakeState | null = null;
+    let initError: string | null = null;
+    try {
+      initialState = await startIntake(user?.id ?? crypto.randomUUID());
+    } catch (err) {
+      initError = err instanceof Error ? err.message : "Failed to start intake session";
+    }
+    return (
+      <FirstHxIntakeScreen
+        greetingName={greetingName}
+        initialState={initialState}
+        initError={initError}
+      />
+    );
   }
 
-  return (
-    <FirstHxIntakeScreen
-      greetingName={greetingName}
-      initialState={initialState}
-      initError={initError}
-    />
-  );
+  return <AiIntakeScreen greetingName={greetingName} />;
 }
