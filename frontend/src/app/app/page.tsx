@@ -1,19 +1,25 @@
 import { currentUser } from "@clerk/nextjs/server";
-import { UserButton } from "@clerk/nextjs";
+import { FirstHxIntakeScreen } from "@/components/intake/firsthx-intake-screen";
+import { startIntake, type IntakeState } from "@/lib/firsthx";
 
 export default async function AppPage() {
   const user = await currentUser();
   const greetingName = user?.firstName ?? "there";
 
+  let initialState: IntakeState | null = null;
+  let initError: string | null = null;
+
+  try {
+    initialState = await startIntake(user?.id ?? crypto.randomUUID());
+  } catch (err) {
+    initError = err instanceof Error ? err.message : "Failed to start intake session";
+  }
+
   return (
-    <div className="flex min-h-svh flex-col">
-      <header className="flex items-center justify-between border-b px-6 py-4">
-        <span className="font-semibold">team-conflict</span>
-        <UserButton />
-      </header>
-      <main className="flex flex-1 items-center justify-center p-6">
-        <h1 className="text-2xl font-semibold">Welcome, {greetingName}</h1>
-      </main>
-    </div>
+    <FirstHxIntakeScreen
+      greetingName={greetingName}
+      initialState={initialState}
+      initError={initError}
+    />
   );
 }
