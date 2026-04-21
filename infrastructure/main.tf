@@ -115,3 +115,39 @@ resource "google_sql_user" "postgres_admin" {
   type     = "BUILT_IN"
   password = random_password.postgres_admin.result
 }
+
+# =============================================================================
+# App service account (Vercel authenticates as this SA)
+# =============================================================================
+
+resource "google_service_account" "app" {
+  account_id   = var.app_service_account_id
+  display_name = "Team Conflict App (Vercel)"
+  description  = "Used by the Next.js app on Vercel to authenticate to Cloud SQL via IAM DB auth."
+
+  depends_on = [google_project_service.iam]
+}
+
+resource "google_project_iam_member" "app_cloudsql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.app.email}"
+}
+
+resource "google_project_iam_member" "app_cloudsql_instance_user" {
+  project = var.project_id
+  role    = "roles/cloudsql.instanceUser"
+  member  = "serviceAccount:${google_service_account.app.email}"
+}
+
+# IAM user inside Postgres — name must be the SA email with ".gserviceaccount.com" stripped
+resource "google_sql_user" "app_iam" {
+  name     = trimsuffix(google_service_account.app.email, ".gserviceaccount.com")
+  instance = google_sql_database_instance.main.name
+  type     = "CLOUD_IAM_SERVICE_ACCOUNT"
+
+  depends_on = [
+    google_project_iam_member.app_cloudsql_instance_user,
+    google_sql_database.main,
+  ]
+}
