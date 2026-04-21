@@ -302,12 +302,16 @@ function ChatScreen({
   const [input, setInput] = useState("");
   const [encounterError, setEncounterError] = useState<Error | null>(null);
   const [encounterId, setEncounterId] = useState<string | null>(null);
+  // The transport body is a closure built once with `useChat`; state changes
+  // don't refresh it. A ref is the stable container the closure can read
+  // from on every request. State is kept in parallel for UI/module props.
+  const encounterIdRef = useRef<string | null>(null);
   const seededRef = useRef(false);
 
   const { messages, sendMessage, status, error, addToolOutput } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/chat",
-      body: () => ({ encounterId }),
+      body: () => ({ encounterId: encounterIdRef.current }),
     }),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
   });
@@ -318,6 +322,7 @@ function ChatScreen({
     seededRef.current = true;
     createEncounter()
       .then(({ id }) => {
+        encounterIdRef.current = id;
         setEncounterId(id);
         sendMessage({ text: initialReason });
       })
