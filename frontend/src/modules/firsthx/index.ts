@@ -27,6 +27,7 @@ export const firstHxModule: IntakeModule<FirstHxArgs, FirstHxResult> = {
   name: "firsthxSymptomCapture",
   description:
     "Capture structured symptom detail (onset, duration, character, severity, associated findings) via the firstHx validated question set. Use when the patient has identified a specific symptom worth characterizing rigorously. Do not call more than once for the same symptom.",
+  transcriptLabel: "Structured symptom questions",
   argsSchema,
   resultSchema,
   Component: FirstHxPanel,

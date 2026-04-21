@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { z } from "zod";
 
 export type ModuleComponentProps<TArgs, TResult> = {
@@ -12,6 +12,15 @@ export type ModuleComponentProps<TArgs, TResult> = {
 export type IntakeModule<TArgs, TResult> = {
   name: string;
   description: string;
+  // Short human label shown in the chat transcript when the module has
+  // finished running (e.g. "Structured symptom questions"). Falls back to
+  // `name` if omitted.
+  transcriptLabel?: string;
+  // Optional rich transcript entry rendered when the module completes —
+  // overrides the default chip. Only called during the session (the raw
+  // result isn't persisted with the message), so the chip is still the
+  // fallback for historical entries.
+  renderCompletedSummary?: (result: TResult) => ReactNode;
   argsSchema: z.ZodType<TArgs>;
   resultSchema: z.ZodType<TResult>;
   Component: ComponentType<ModuleComponentProps<TArgs, TResult>>;
