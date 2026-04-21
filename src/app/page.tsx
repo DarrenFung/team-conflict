@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@clerk/nextjs/server";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 
 export default async function HomePage() {
   const { userId } = await auth();
@@ -18,12 +18,12 @@ export default async function HomePage() {
         </p>
       </div>
       <div className="flex gap-3">
-        <Button asChild>
-          <Link href="/sign-in">Sign in</Link>
-        </Button>
-        <Button asChild variant="outline">
-          <Link href="/sign-up">Create account</Link>
-        </Button>
+        <Link href="/sign-in" className={buttonVariants()}>
+          Sign in
+        </Link>
+        <Link href="/sign-up" className={buttonVariants({ variant: "outline" })}>
+          Create account
+        </Link>
       </div>
     </main>
   );
