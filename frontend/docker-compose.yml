@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: team_conflict_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: team_conflict
+    ports:
+      - "5432:5432"
+    volumes:
+      - team_conflict_pgdata:/var/lib/postgresql/data
+
+volumes:
+  team_conflict_pgdata:
