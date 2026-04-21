@@ -17,10 +17,27 @@ model User {
 }
 
 model Encounter {
-  id        String   @id @default(cuid())
+  id        String     @id @default(cuid())
   userId    String
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents Document[]
 
   @@index([userId])
+}
+
+// A file uploaded during an encounter and stored in a GCS bucket.
+// (bucket, objectPath) is the address of the underlying object.
+model Document {
+  id               String   @id @default(cuid())
+  encounterId      String
+  bucket           String
+  objectPath       String
+  originalFilename String
+  contentType      String
+  sizeBytes        Int
+  createdAt        DateTime @default(now())
+  encounter        Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+
+  @@index([encounterId])
 }
