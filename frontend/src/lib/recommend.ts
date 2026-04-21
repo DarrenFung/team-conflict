@@ -1,6 +1,7 @@
 import "server-only";
 import { generateText, Output } from "ai";
 import { z } from "zod";
+import { getDownloadUrl } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { vertex } from "@/lib/vertex";
 import { mapsTool } from "@/lib/maps";
@@ -129,17 +130,32 @@ ${titleList}`,
 
   // 5. Load patient documents (if encounter is known)
   let attachmentContext = "";
+  let fileParts: Array<{ type: "file"; data: Uint8Array; mediaType: string }> = [];
   if (input.encounterId) {
     const attachments = await prisma.attachment.findMany({
       where: { encounterId: input.encounterId },
-      select: { description: true, originalFilename: true, contentType: true },
+      select: { url: true, description: true, originalFilename: true, contentType: true },
     });
     if (attachments.length > 0) {
       attachmentContext =
-        "\n\n## Patient Documents on File\n" +
+        "\n\n## Patient Documents Attached\n" +
         attachments
           .map((a) => `- ${a.description}: ${a.originalFilename} (${a.contentType})`)
-          .join("\n");
+          .join("\n") +
+        "\n\nThe actual file contents are attached to this message. Review them as part of your assessment.";
+
+      // Download file contents from Vercel Blob for inline delivery to Gemini
+      fileParts = await Promise.all(
+        attachments.map(async (a) => {
+          const url = await getDownloadUrl(a.url);
+          const res = await fetch(url);
+          return {
+            type: "file" as const,
+            data: new Uint8Array(await res.arrayBuffer()),
+            mediaType: a.contentType,
+          };
+        }),
+      );
     }
   }
 
@@ -188,7 +204,15 @@ ${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${att
   const result = await generateText({
     model: vertex(MODEL),
     system: SYSTEM_PROMPT,
-    prompt: userPrompt,
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: userPrompt },
+          ...fileParts,
+        ],
+      },
+    ],
     ...(input.location
       ? { tools: { find_nearby_healthcare_provider: mapsTool }, maxSteps: 5 }
       : {}),
