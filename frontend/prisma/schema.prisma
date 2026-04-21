@@ -14,6 +14,7 @@ model User {
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   encounters Encounter[]
+  documents  Document[]
 }
 
 model Encounter {
@@ -26,18 +27,25 @@ model Encounter {
   @@index([userId])
 }
 
-// A file uploaded during an encounter and stored in a GCS bucket.
+// A file uploaded by a user and stored in a GCS bucket. Optionally scoped to
+// a specific encounter (e.g. a lab result gathered for today's visit); if
+// encounterId is null the document belongs to the user in general (e.g.
+// insurance card, prior imaging).
 // (bucket, objectPath) is the address of the underlying object.
 model Document {
-  id               String   @id @default(cuid())
-  encounterId      String
+  id               String     @id @default(cuid())
+  userId           String
+  encounterId      String?
   bucket           String
   objectPath       String
   originalFilename String
   contentType      String
   sizeBytes        Int
-  createdAt        DateTime @default(now())
-  encounter        Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  description      String
+  createdAt        DateTime   @default(now())
+  user             User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  encounter        Encounter? @relation(fields: [encounterId], references: [id], onDelete: SetNull)
 
+  @@index([userId])
   @@index([encounterId])
 }
