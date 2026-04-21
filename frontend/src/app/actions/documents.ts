@@ -1,0 +1,70 @@
+"use server";
+
+import { randomUUID } from "node:crypto";
+import { currentUser } from "@clerk/nextjs/server";
+import { getDocumentsBucket, getStorageClient } from "@/lib/gcs";
+import { prisma } from "@/lib/db";
+
+// 15 minutes is plenty for a single-file upload and keeps exposure short if a
+// URL leaks.
+const UPLOAD_URL_TTL_MS = 15 * 60 * 1000;
+
+export async function getUploadUrl(input: {
+  filename: string;
+  contentType: string;
+}): Promise<{ signedUrl: string; objectPath: string }> {
+  const user = await currentUser();
+  if (!user) throw new Error("Not authenticated");
+
+  // Keep filename for display in the path but scrub anything that could break
+  // downstream tooling or escape the prefix.
+  const safeName = input.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const objectPath = `users/${user.id}/${Date.now()}-${randomUUID()}-${safeName}`;
+
+  const file = getStorageClient().bucket(getDocumentsBucket()).file(objectPath);
+  const [signedUrl] = await file.getSignedUrl({
+    version: "v4",
+    action: "write",
+    contentType: input.contentType,
+    expires: Date.now() + UPLOAD_URL_TTL_MS,
+  });
+
+  return { signedUrl, objectPath };
+}
+
+export async function recordDocument(input: {
+  encounterId: string | null;
+  objectPath: string;
+  originalFilename: string;
+  contentType: string;
+  sizeBytes: number;
+  description: string;
+}): Promise<{ id: string }> {
+  const user = await currentUser();
+  if (!user) throw new Error("Not authenticated");
+
+  if (input.encounterId) {
+    const encounter = await prisma.encounter.findUnique({
+      where: { id: input.encounterId },
+      select: { userId: true },
+    });
+    if (!encounter || encounter.userId !== user.id) {
+      throw new Error("Encounter not found");
+    }
+  }
+
+  const doc = await prisma.document.create({
+    data: {
+      userId: user.id,
+      encounterId: input.encounterId,
+      bucket: getDocumentsBucket(),
+      objectPath: input.objectPath,
+      originalFilename: input.originalFilename,
+      contentType: input.contentType,
+      sizeBytes: input.sizeBytes,
+      description: input.description,
+    },
+    select: { id: true },
+  });
+  return doc;
+}

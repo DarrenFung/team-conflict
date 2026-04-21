@@ -388,6 +388,7 @@ function ChatScreen({
             ) : pending && activeModule ? (
               <activeModule.Component
                 args={pending.input}
+                encounterId={encounterId}
                 onComplete={(result) => {
                   addToolOutput({
                     tool: pending.toolName,

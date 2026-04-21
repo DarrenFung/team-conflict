@@ -4,6 +4,9 @@ import type { z } from "zod";
 export type ModuleComponentProps<TArgs, TResult> = {
   args: TArgs;
   onComplete: (result: TResult) => void;
+  // Null only in edge cases where the chat renders before encounter creation
+  // resolves. Most modules don't need this and can ignore it.
+  encounterId: string | null;
 };
 
 export type IntakeModule<TArgs, TResult> = {
