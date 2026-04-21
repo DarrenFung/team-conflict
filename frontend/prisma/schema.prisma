@@ -9,8 +9,18 @@ datasource db {
 
 // Mirrors Clerk user identity. `id` is the Clerk user id (cus_...).
 model User {
-  id        String   @id
-  email     String   @unique
+  id         String      @id
+  email      String      @unique
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  encounters Encounter[]
+}
+
+model Encounter {
+  id        String   @id @default(cuid())
+  userId    String
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

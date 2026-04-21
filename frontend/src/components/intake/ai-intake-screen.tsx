@@ -13,6 +13,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { findModule } from "@/modules/registry";
 import { PostIntakeAccountPrompt } from "@/components/intake/post-intake-account-prompt";
+import { createEncounter } from "@/app/actions/encounter";
 
 const COMPLETION_MARKER = "[INTAKE_COMPLETE]";
 
@@ -112,13 +113,7 @@ const REASON_PROMPTS = [
   "I need a family doctor and don't know how to find one covered by my plan",
 ];
 
-function ReasonScreen({
-  greetingName,
-  onContinue,
-}: {
-  greetingName: string;
-  onContinue: (reason: string) => void;
-}) {
+function ReasonScreen({ onContinue }: { onContinue: (reason: string) => void }) {
   const [reason, setReason] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const trimmed = reason.trim();
@@ -305,17 +300,31 @@ function ChatScreen({
   initialReason: string;
 }) {
   const [input, setInput] = useState("");
+  const [encounterError, setEncounterError] = useState<Error | null>(null);
+  const [encounterId, setEncounterId] = useState<string | null>(null);
   const seededRef = useRef(false);
 
   const { messages, sendMessage, status, error, addToolOutput } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
+    transport: new DefaultChatTransport({
+      api: "/api/chat",
+      body: () => ({ encounterId }),
+    }),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
   });
 
+  // Record encounter, then seed chat so every /api/chat request includes encounterId.
   useEffect(() => {
     if (seededRef.current) return;
     seededRef.current = true;
-    sendMessage({ text: initialReason });
+    createEncounter()
+      .then(({ id }) => {
+        setEncounterId(id);
+        sendMessage({ text: initialReason });
+      })
+      .catch((err) => {
+        console.error("Failed to create encounter", err);
+        setEncounterError(err instanceof Error ? err : new Error(String(err)));
+      });
   }, [initialReason, sendMessage]);
 
   const pending = useMemo(() => findPendingToolCall(messages), [messages]);
@@ -347,19 +356,15 @@ function ChatScreen({
       <main className="relative z-10 mx-auto flex min-h-svh w-full max-w-[620px] flex-col px-6 pb-12 pt-[76px] sm:px-8">
         <Header greetingName={greetingName} />
 
-        {error ? (
+        {error || encounterError ? (
           <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-5 text-sm text-destructive">
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 size-4 shrink-0" />
-              <p>{error.message || "Something went wrong."}</p>
+              <p>{(error ?? encounterError)?.message || "Something went wrong."}</p>
             </div>
           </div>
         ) : (
-          <div
-            className={cn(
-              "flex flex-grow flex-col gap-4 rounded-2xl border-[1.5px] border-[rgba(24,95,165,0.15)] bg-white/80 p-6 shadow-[0_2px_16px_rgba(24,95,165,0.06)] backdrop-blur-sm sm:p-8",
-            )}
-          >
+          <div className="intake-glass flex flex-grow flex-col gap-4 rounded-2xl p-6 sm:p-8">
             <ChatHistory messages={messages} isStreaming={isStreaming} />
 
             {isComplete ? (
@@ -443,7 +448,6 @@ export function AiIntakeScreen({ greetingName }: Props) {
   if (step === "reason") {
     return (
       <ReasonScreen
-        greetingName={greetingName}
         onContinue={(r) => {
           setReason(r);
           setStep("chat");

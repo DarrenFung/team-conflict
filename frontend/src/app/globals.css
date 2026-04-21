@@ -4,6 +4,85 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Navara blue theme — replaces shadcn’s default primary (~hue 154 green).
+   Tokens are unlayered so they win over layered rules from shadcn/tailwind.css.
+   --blue #185FA5  →  oklch(0.44 0.14 253)
+   --blue-dark #0e4a87  →  oklch(0.35 0.13 254)
+   --blue-light #E6F1FB  →  oklch(0.95 0.04 252)
+   --blue-mid #378ADD  →  oklch(0.58 0.12 252)
+   --text #1A2033  →  oklch(0.19 0.025 255)
+   --muted #6B7280  →  oklch(0.54 0.01 266)
+   --surface #F7F9FC  →  oklch(0.98 0.005 248) */
+
+:root {
+  --background: oklch(0.98 0.005 248);
+  --foreground: oklch(0.19 0.025 255);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.19 0.025 255);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.19 0.025 255);
+  --primary: oklch(0.44 0.14 253);
+  --primary-foreground: oklch(0.98 0.005 248);
+  --secondary: oklch(0.95 0.04 252);
+  --secondary-foreground: oklch(0.32 0.03 255);
+  --muted: oklch(0.96 0.02 250);
+  --muted-foreground: oklch(0.54 0.01 266);
+  --accent: oklch(0.94 0.05 252);
+  --accent-foreground: oklch(0.32 0.03 255);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.44 0.14 253 / 0.12);
+  --input: oklch(0.9 0.03 252);
+  --ring: oklch(0.58 0.12 252);
+  --chart-1: oklch(0.44 0.14 253);
+  --chart-2: oklch(0.58 0.12 252);
+  --chart-3: oklch(0.35 0.13 254);
+  --chart-4: oklch(0.439 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.99 0.005 248);
+  --sidebar-foreground: oklch(0.19 0.025 255);
+  --sidebar-primary: oklch(0.44 0.14 253);
+  --sidebar-primary-foreground: oklch(0.98 0.005 248);
+  --sidebar-accent: oklch(0.95 0.04 252);
+  --sidebar-accent-foreground: oklch(0.32 0.03 255);
+  --sidebar-border: oklch(0.44 0.14 253 / 0.1);
+  --sidebar-ring: oklch(0.58 0.12 252);
+}
+
+.dark {
+  --background: oklch(0.16 0.025 255);
+  --foreground: oklch(0.95 0.01 252);
+  --card: oklch(0.2 0.025 255);
+  --card-foreground: oklch(0.95 0.01 252);
+  --popover: oklch(0.2 0.025 255);
+  --popover-foreground: oklch(0.95 0.01 252);
+  --primary: oklch(0.62 0.14 252);
+  --primary-foreground: oklch(0.16 0.025 255);
+  --secondary: oklch(0.28 0.03 255);
+  --secondary-foreground: oklch(0.95 0.01 252);
+  --muted: oklch(0.28 0.03 255);
+  --muted-foreground: oklch(0.72 0.02 252);
+  --accent: oklch(0.28 0.04 253);
+  --accent-foreground: oklch(0.95 0.01 252);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.62 0.14 252);
+  --chart-1: oklch(0.62 0.14 252);
+  --chart-2: oklch(0.72 0.1 252);
+  --chart-3: oklch(0.439 0 0);
+  --chart-4: oklch(0.371 0 0);
+  --chart-5: oklch(0.269 0 0);
+  --sidebar: oklch(0.2 0.025 255);
+  --sidebar-foreground: oklch(0.95 0.01 252);
+  --sidebar-primary: oklch(0.62 0.14 252);
+  --sidebar-primary-foreground: oklch(0.16 0.025 255);
+  --sidebar-accent: oklch(0.28 0.03 255);
+  --sidebar-accent-foreground: oklch(0.95 0.01 252);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.62 0.14 252);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -49,86 +128,7 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Navara design tokens
-   --blue #185FA5  →  oklch(0.44 0.14 253)
-   --blue-dark #0e4a87  →  oklch(0.35 0.13 254)
-   --blue-light #E6F1FB  →  oklch(0.95 0.04 252)
-   --blue-mid #378ADD  →  oklch(0.58 0.12 252)
-   --text #1A2033  →  oklch(0.19 0.025 255)
-   --muted #6B7280  →  oklch(0.54 0.01 266)
-   --surface #F7F9FC  →  oklch(0.98 0.005 248) */
-
-/* Tokens live in @layer base so they override Tailwind’s default (green) theme. */
 @layer base {
-  :root {
-    --background: oklch(0.98 0.005 248);
-    --foreground: oklch(0.19 0.025 255);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.19 0.025 255);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.19 0.025 255);
-    --primary: oklch(0.44 0.14 253);
-    --primary-foreground: oklch(0.98 0.005 248);
-    --secondary: oklch(0.95 0.04 252);
-    --secondary-foreground: oklch(0.32 0.03 255);
-    --muted: oklch(0.96 0.02 250);
-    --muted-foreground: oklch(0.54 0.01 266);
-    --accent: oklch(0.94 0.05 252);
-    --accent-foreground: oklch(0.32 0.03 255);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.44 0.14 253 / 0.12);
-    --input: oklch(0.9 0.03 252);
-    --ring: oklch(0.58 0.12 252);
-    --chart-1: oklch(0.44 0.14 253);
-    --chart-2: oklch(0.58 0.12 252);
-    --chart-3: oklch(0.35 0.13 254);
-    --chart-4: oklch(0.439 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.99 0.005 248);
-    --sidebar-foreground: oklch(0.19 0.025 255);
-    --sidebar-primary: oklch(0.44 0.14 253);
-    --sidebar-primary-foreground: oklch(0.98 0.005 248);
-    --sidebar-accent: oklch(0.95 0.04 252);
-    --sidebar-accent-foreground: oklch(0.32 0.03 255);
-    --sidebar-border: oklch(0.44 0.14 253 / 0.1);
-    --sidebar-ring: oklch(0.58 0.12 252);
-  }
-
-  .dark {
-    --background: oklch(0.16 0.025 255);
-    --foreground: oklch(0.95 0.01 252);
-    --card: oklch(0.2 0.025 255);
-    --card-foreground: oklch(0.95 0.01 252);
-    --popover: oklch(0.2 0.025 255);
-    --popover-foreground: oklch(0.95 0.01 252);
-    --primary: oklch(0.62 0.14 252);
-    --primary-foreground: oklch(0.16 0.025 255);
-    --secondary: oklch(0.28 0.03 255);
-    --secondary-foreground: oklch(0.95 0.01 252);
-    --muted: oklch(0.28 0.03 255);
-    --muted-foreground: oklch(0.72 0.02 252);
-    --accent: oklch(0.28 0.04 253);
-    --accent-foreground: oklch(0.95 0.01 252);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(1 0 0 / 12%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.62 0.14 252);
-    --chart-1: oklch(0.62 0.14 252);
-    --chart-2: oklch(0.72 0.1 252);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.2 0.025 255);
-    --sidebar-foreground: oklch(0.95 0.01 252);
-    --sidebar-primary: oklch(0.62 0.14 252);
-    --sidebar-primary-foreground: oklch(0.16 0.025 255);
-    --sidebar-accent: oklch(0.28 0.03 255);
-    --sidebar-accent-foreground: oklch(0.95 0.01 252);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.62 0.14 252);
-  }
-
   * {
     @apply border-border outline-ring/50;
   }
