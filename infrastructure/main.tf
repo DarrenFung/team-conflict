@@ -79,3 +79,39 @@ resource "google_sql_database" "main" {
   instance = google_sql_database_instance.main.name
   charset  = "UTF8"
 }
+
+# =============================================================================
+# Admin password (random, stored only in Secret Manager)
+# =============================================================================
+
+resource "random_password" "postgres_admin" {
+  length           = 32
+  special          = true
+  override_special = "!@#$%^&*()-_=+[]{}"
+}
+
+resource "google_secret_manager_secret" "postgres_admin" {
+  secret_id = "postgres-admin-password"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager]
+}
+
+resource "google_secret_manager_secret_version" "postgres_admin" {
+  secret      = google_secret_manager_secret.postgres_admin.id
+  secret_data = random_password.postgres_admin.result
+}
+
+# =============================================================================
+# Built-in postgres admin user (emergency access + migrations)
+# =============================================================================
+
+resource "google_sql_user" "postgres_admin" {
+  name     = "postgres"
+  instance = google_sql_database_instance.main.name
+  type     = "BUILT_IN"
+  password = random_password.postgres_admin.result
+}
