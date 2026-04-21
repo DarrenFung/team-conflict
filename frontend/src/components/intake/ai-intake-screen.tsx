@@ -10,6 +10,7 @@ import { AlertCircle, CheckCircle2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { findModule } from "@/modules/registry";
 import { PostIntakeAccountPrompt } from "@/components/intake/post-intake-account-prompt";
+import { DownloadPdfButton } from "@/components/intake/download-pdf-button";
 import { createEncounter } from "@/app/actions/encounter";
 import { NavaraTopNav } from "@/components/layout/navara-top-nav";
 
@@ -397,6 +398,11 @@ function ChatScreen({
                     Your intake summary has been recorded above.
                   </p>
                 </div>
+                <DownloadPdfButton
+                  messages={messages}
+                  greetingName={greetingName}
+                  moduleResults={moduleResults}
+                />
                 <PostIntakeAccountPrompt />
               </div>
             ) : pending && activeModule ? (
