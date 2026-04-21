@@ -43,14 +43,23 @@ End the final turn with [INTAKE_COMPLETE] on its own line. Do not emit that mark
 // exchanged for short-lived GCP credentials that impersonate the configured
 // service account. No service account keys (blocked by org policy).
 function getVertexProvider() {
+  const onVercel = process.env.VERCEL === "1";
   const oidcToken = process.env.VERCEL_OIDC_TOKEN;
-  if (!oidcToken) return defaultVertex;
+
+  if (!oidcToken) {
+    if (onVercel) {
+      throw new Error(
+        "Running on Vercel but VERCEL_OIDC_TOKEN is not set. Enable OIDC Federation in Vercel → Project Settings → Security → Secure Backend Access, then redeploy.",
+      );
+    }
+    return defaultVertex;
+  }
 
   const audience = process.env.GCP_WORKLOAD_IDENTITY_AUDIENCE;
   const saEmail = process.env.GCP_SERVICE_ACCOUNT_EMAIL;
   if (!audience || !saEmail) {
     throw new Error(
-      "WIF misconfigured: set GCP_WORKLOAD_IDENTITY_AUDIENCE and GCP_SERVICE_ACCOUNT_EMAIL",
+      "WIF misconfigured: set GCP_WORKLOAD_IDENTITY_AUDIENCE and GCP_SERVICE_ACCOUNT_EMAIL in Vercel env vars (values come from `terraform output`).",
     );
   }
 
