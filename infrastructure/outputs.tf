@@ -13,7 +13,7 @@ output "project_number" {
   value       = data.google_project.current.number
 }
 
-output "documents_bucket_name" {
-  description = "Set as GCP_DOCUMENTS_BUCKET in the Vercel project's env vars."
-  value       = google_storage_bucket.documents.name
+output "attachments_bucket_name" {
+  description = "Set as GCP_ATTACHMENTS_BUCKET in the Vercel project's env vars."
+  value       = google_storage_bucket.attachments.name
 }

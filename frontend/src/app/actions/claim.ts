@@ -41,7 +41,7 @@ export async function claimGuestIfPresent(): Promise<void> {
         where: { userId: guest.id },
         data: { userId: existing.id },
       });
-      await tx.document.updateMany({
+      await tx.attachment.updateMany({
         where: { userId: guest.id },
         data: { userId: existing.id },
       });

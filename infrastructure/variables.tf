@@ -48,10 +48,10 @@ variable "vercel_service_account_id" {
 }
 
 # =============================================================================
-# Document storage
+# Attachment storage
 # =============================================================================
 
-variable "documents_bucket_cors_origins" {
+variable "attachments_bucket_cors_origins" {
   description = "Origins allowed to upload/download via signed URLs. Tighten to exact Vercel URLs in production."
   type        = list(string)
   default     = ["*"]

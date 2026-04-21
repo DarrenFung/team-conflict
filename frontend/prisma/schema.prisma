@@ -16,31 +16,31 @@ datasource db {
 // `id` is a stable cuid — everything downstream (encounters, documents) keys
 // off it and doesn't care which population the user is in.
 model User {
-  id         String      @id @default(cuid())
-  clerkId    String?     @unique
-  email      String?     @unique
-  createdAt  DateTime    @default(now())
-  updatedAt  DateTime    @updatedAt
-  encounters Encounter[]
-  documents  Document[]
+  id          String       @id @default(cuid())
+  clerkId     String?      @unique
+  email       String?      @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  encounters  Encounter[]
+  attachments Attachment[]
 }
 
 model Encounter {
-  id        String     @id @default(cuid())
-  userId    String
-  createdAt DateTime   @default(now())
-  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  documents Document[]
+  id          String       @id @default(cuid())
+  userId      String
+  createdAt   DateTime     @default(now())
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  attachments Attachment[]
 
   @@index([userId])
 }
 
 // A file uploaded by a user and stored in a GCS bucket. Optionally scoped to
 // a specific encounter (e.g. a lab result gathered for today's visit); if
-// encounterId is null the document belongs to the user in general (e.g.
+// encounterId is null the attachment belongs to the user in general (e.g.
 // insurance card, prior imaging).
 // (bucket, objectPath) is the address of the underlying object.
-model Document {
+model Attachment {
   id               String     @id @default(cuid())
   userId           String
   encounterId      String?

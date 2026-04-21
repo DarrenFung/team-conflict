@@ -1,7 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { getDocumentsBucket, getStorageClient } from "@/lib/gcs";
+import { getAttachmentsBucket, getStorageClient } from "@/lib/gcs";
 import { prisma } from "@/lib/db";
 import { getOrCreateActiveUser } from "@/lib/auth";
 
@@ -20,7 +20,7 @@ export async function getUploadUrl(input: {
   const safeName = input.filename.replace(/[^a-zA-Z0-9._-]/g, "_");
   const objectPath = `users/${user.id}/${Date.now()}-${randomUUID()}-${safeName}`;
 
-  const file = getStorageClient().bucket(getDocumentsBucket()).file(objectPath);
+  const file = getStorageClient().bucket(getAttachmentsBucket()).file(objectPath);
   const [signedUrl] = await file.getSignedUrl({
     version: "v4",
     action: "write",
@@ -31,7 +31,7 @@ export async function getUploadUrl(input: {
   return { signedUrl, objectPath };
 }
 
-export async function recordDocument(input: {
+export async function recordAttachment(input: {
   encounterId: string | null;
   objectPath: string;
   originalFilename: string;
@@ -51,11 +51,11 @@ export async function recordDocument(input: {
     }
   }
 
-  const doc = await prisma.document.create({
+  const attachment = await prisma.attachment.create({
     data: {
       userId: user.id,
       encounterId: input.encounterId,
-      bucket: getDocumentsBucket(),
+      bucket: getAttachmentsBucket(),
       objectPath: input.objectPath,
       originalFilename: input.originalFilename,
       contentType: input.contentType,
@@ -64,5 +64,5 @@ export async function recordDocument(input: {
     },
     select: { id: true },
   });
-  return doc;
+  return attachment;
 }

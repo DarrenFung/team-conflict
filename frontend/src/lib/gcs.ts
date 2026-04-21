@@ -4,9 +4,9 @@ import { ExternalAccountClient } from "google-auth-library";
 import { getVercelOidcToken } from "@vercel/oidc";
 
 // Local dev: ADC via `gcloud auth application-default login`. For signed URLs
-// to work locally your ADC identity needs `roles/iam.serviceAccountTokenCreator`
-// on the impersonated SA, or re-run login with
-// `--impersonate-service-account=<vercel-vertex SA email>`.
+// to work locally, re-run login with
+// `--impersonate-service-account=<vercel-vertex SA email>` (requires
+// `roles/iam.serviceAccountTokenCreator` on that SA).
 //
 // Vercel prod: same WIF flow Vertex uses — OIDC token exchanged for an
 // access token impersonating the SA, which then calls iamcredentials.signBlob
@@ -50,11 +50,11 @@ export function getStorageClient(): Storage {
   return cached;
 }
 
-export function getDocumentsBucket(): string {
-  const bucket = process.env.GCP_DOCUMENTS_BUCKET;
+export function getAttachmentsBucket(): string {
+  const bucket = process.env.GCP_ATTACHMENTS_BUCKET;
   if (!bucket) {
     throw new Error(
-      "GCP_DOCUMENTS_BUCKET is not set. Set it to the bucket name from `terraform output documents_bucket_name`.",
+      "GCP_ATTACHMENTS_BUCKET is not set. Set it to the bucket name from `terraform output attachments_bucket_name`.",
     );
   }
   return bucket;

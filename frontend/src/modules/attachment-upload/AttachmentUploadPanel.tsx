@@ -4,28 +4,28 @@ import { useState } from "react";
 import { AlertCircle, FileText, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { getUploadUrl, recordDocument } from "@/app/actions/documents";
+import { getUploadUrl, recordAttachment } from "@/app/actions/attachments";
 import type { ModuleComponentProps } from "../types";
-import type { DocumentUploadArgs, DocumentUploadResult } from "./index";
+import type { AttachmentUploadArgs, AttachmentUploadResult } from "./index";
 
-type Props = ModuleComponentProps<DocumentUploadArgs, DocumentUploadResult>;
+type Props = ModuleComponentProps<AttachmentUploadArgs, AttachmentUploadResult>;
 
-type UploadedFile = DocumentUploadResult["uploads"][number]["files"][number];
+type UploadedFile = AttachmentUploadResult["uploads"][number]["files"][number];
 
-export function DocumentUploadPanel({ args, onComplete, encounterId }: Props) {
+export function AttachmentUploadPanel({ args, onComplete, encounterId }: Props) {
   const [slots, setSlots] = useState<Record<string, File[]>>(() =>
-    Object.fromEntries(args.documents.map((d) => [d.id, []])),
+    Object.fromEntries(args.attachments.map((d) => [d.id, []])),
   );
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const allSlotsFilled = args.documents.every((d) => (slots[d.id] ?? []).length > 0);
+  const allSlotsFilled = args.attachments.every((d) => (slots[d.id] ?? []).length > 0);
 
   function addFiles(specId: string, list: FileList | null) {
     if (!list || list.length === 0) return;
     const incoming = Array.from(list);
     setSlots((prev) => {
-      const spec = args.documents.find((d) => d.id === specId);
+      const spec = args.attachments.find((d) => d.id === specId);
       const current = prev[specId] ?? [];
       const next = spec?.multiple ? [...current, ...incoming] : incoming.slice(0, 1);
       return { ...prev, [specId]: next };
@@ -55,7 +55,7 @@ export function DocumentUploadPanel({ args, onComplete, encounterId }: Props) {
       throw new Error(`Upload of "${file.name}" failed (${putRes.status})`);
     }
 
-    const doc = await recordDocument({
+    const attachment = await recordAttachment({
       encounterId,
       objectPath,
       originalFilename: file.name,
@@ -65,7 +65,7 @@ export function DocumentUploadPanel({ args, onComplete, encounterId }: Props) {
     });
 
     return {
-      documentId: doc.id,
+      attachmentId: attachment.id,
       originalFilename: file.name,
       contentType,
       sizeBytes: file.size,
@@ -76,8 +76,8 @@ export function DocumentUploadPanel({ args, onComplete, encounterId }: Props) {
     setUploading(true);
     setError(null);
     try {
-      const uploads: DocumentUploadResult["uploads"] = [];
-      for (const spec of args.documents) {
+      const uploads: AttachmentUploadResult["uploads"] = [];
+      for (const spec of args.attachments) {
         const files = slots[spec.id] ?? [];
         const uploaded = await Promise.all(
           files.map((f) => uploadOne(f, spec.description)),
@@ -93,7 +93,7 @@ export function DocumentUploadPanel({ args, onComplete, encounterId }: Props) {
 
   return (
     <div className="flex flex-col gap-4 border-t border-[rgba(24,95,165,0.12)] pt-4">
-      {args.documents.map((spec) => {
+      {args.attachments.map((spec) => {
         const files = slots[spec.id] ?? [];
         return (
           <div

@@ -16,7 +16,7 @@ export default async function AppPage({
   searchParams: Promise<{ intake?: string }>;
 }) {
   // If the user just signed up/in after a guest session, attach their guest
-  // encounters and documents to the Clerk account before rendering.
+  // encounters and attachments to the Clerk account before rendering.
   await claimGuestIfPresent();
 
   const user = await currentUser();
