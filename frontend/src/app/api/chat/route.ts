@@ -1,6 +1,7 @@
 import { vertex as defaultVertex, createVertex } from "@ai-sdk/google-vertex";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
 import { ExternalAccountClient } from "google-auth-library";
+import { getVercelOidcToken } from "@vercel/oidc";
 
 export const maxDuration = 30;
 
@@ -39,21 +40,14 @@ When the intake is complete, output a clinician-facing summary with sections:
 End the final turn with [INTAKE_COMPLETE] on its own line. Do not emit that marker before the summary is fully written.`;
 
 // Local dev: ADC via `gcloud auth application-default login`.
-// Vercel prod: Workload Identity Federation — Vercel's OIDC token is
-// exchanged for short-lived GCP credentials that impersonate the configured
-// service account. No service account keys (blocked by org policy).
+// Vercel prod: Workload Identity Federation — Vercel's OIDC token (from the
+// `x-vercel-oidc-token` header in functions, VERCEL_OIDC_TOKEN env var in
+// builds/local) is exchanged for short-lived GCP credentials that impersonate
+// the configured service account. `@vercel/oidc`'s getVercelOidcToken handles
+// both sources transparently.
 function getVertexProvider() {
   const onVercel = process.env.VERCEL === "1";
-  const oidcToken = process.env.VERCEL_OIDC_TOKEN;
-
-  if (!oidcToken) {
-    if (onVercel) {
-      throw new Error(
-        "Running on Vercel but VERCEL_OIDC_TOKEN is not set. Enable OIDC Federation in Vercel → Project Settings → Security → Secure Backend Access, then redeploy.",
-      );
-    }
-    return defaultVertex;
-  }
+  if (!onVercel) return defaultVertex;
 
   const audience = process.env.GCP_WORKLOAD_IDENTITY_AUDIENCE;
   const saEmail = process.env.GCP_SERVICE_ACCOUNT_EMAIL;
@@ -70,12 +64,7 @@ function getVertexProvider() {
     token_url: "https://sts.googleapis.com/v1/token",
     service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${saEmail}:generateAccessToken`,
     subject_token_supplier: {
-      // Read at call time so token refreshes are picked up per-request.
-      getSubjectToken: async () => {
-        const token = process.env.VERCEL_OIDC_TOKEN;
-        if (!token) throw new Error("VERCEL_OIDC_TOKEN not present");
-        return token;
-      },
+      getSubjectToken: () => getVercelOidcToken(),
     },
   });
 
