@@ -12,3 +12,8 @@ output "project_number" {
   description = "GCP project number. Useful for building resource strings manually."
   value       = data.google_project.current.number
 }
+
+output "documents_bucket_name" {
+  description = "Set as GCP_DOCUMENTS_BUCKET in the Vercel project's env vars."
+  value       = google_storage_bucket.documents.name
+}

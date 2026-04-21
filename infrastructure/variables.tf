@@ -46,3 +46,13 @@ variable "vercel_service_account_id" {
   type        = string
   default     = "vercel-vertex"
 }
+
+# =============================================================================
+# Document storage
+# =============================================================================
+
+variable "documents_bucket_cors_origins" {
+  description = "Origins allowed to upload/download via signed URLs. Tighten to exact Vercel URLs in production."
+  type        = list(string)
+  default     = ["*"]
+}
