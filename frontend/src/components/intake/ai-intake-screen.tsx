@@ -10,8 +10,25 @@ import {
   goBack as goBackAction,
   startIntakeSession,
   submitAnswer,
+  type AnswerData,
 } from "@/app/actions/firsthx";
 import type { IntakeContent, IntakeOption, IntakeState } from "@/lib/firsthx";
+
+function isMultiSelectType(type: string) {
+  return type === "selectAll" || type === "selectAllBodyParts";
+}
+
+function isFreeTextType(type: string) {
+  return type === "freeTextForm" || type === "freeTextRfv";
+}
+
+function isNumberType(type: string) {
+  return type === "numberForm" || type === "numberFormSlider";
+}
+
+function isInfoType(type: string) {
+  return type === "text";
+}
 
 const START_FIRSTHX_PATTERN = /\[START_FIRSTHX:([^\]]+)\]/;
 const FIRSTHX_RESULT_PREFIX = "[FIRSTHX_RESULT]";
@@ -26,7 +43,7 @@ type Mode = "chat" | "firsthx" | "complete";
 
 type FirstHxTurn = {
   question: string;
-  answers: string[];
+  display: string;
 };
 
 function buildSelectedOptions(
@@ -190,15 +207,28 @@ function FirstHxPanel({
   state: IntakeState;
   isPending: boolean;
   error: string | null;
-  onAnswer: (selectedIds: number[]) => void;
+  onAnswer: (answer: AnswerData, display: string) => void;
   onBack: () => void;
 }) {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [textValue, setTextValue] = useState("");
+  const [numberValue, setNumberValue] = useState("");
+  const [selectedUnit, setSelectedUnit] = useState("");
   const content = state.content;
+  const contentId = content?.id;
 
   useEffect(() => {
     setSelectedIds([]);
-  }, [content?.id]);
+    setTextValue("");
+    setNumberValue("");
+    setSelectedUnit("");
+  }, [contentId]);
+
+  useEffect(() => {
+    if (content && isNumberType(content.type) && !selectedUnit && content.units?.[0]) {
+      setSelectedUnit(content.units[0]);
+    }
+  }, [content, selectedUnit]);
 
   if (!content) {
     return (
@@ -208,9 +238,20 @@ function FirstHxPanel({
     );
   }
 
+  const type = content.type;
   const options = content.options ?? [];
-  const isMulti = content.type === "multiSelect";
-  const canSubmit = selectedIds.length > 0 || !content.inputRequired;
+  const isMulti = isMultiSelectType(type);
+
+  let canSubmit: boolean;
+  if (isInfoType(type)) {
+    canSubmit = true;
+  } else if (isFreeTextType(type)) {
+    canSubmit = !content.inputRequired || textValue.trim().length > 0;
+  } else if (isNumberType(type)) {
+    canSubmit = numberValue !== "" && !Number.isNaN(Number(numberValue));
+  } else {
+    canSubmit = selectedIds.length > 0 || !content.inputRequired;
+  }
 
   function toggle(optionId: number, deselectOthers?: boolean) {
     if (isMulti && !deselectOthers) {
@@ -222,15 +263,43 @@ function FirstHxPanel({
     }
   }
 
+  function submit() {
+    if (!canSubmit || !content) return;
+    if (isInfoType(type)) {
+      onAnswer({ kind: "options", options: [] }, "Continued");
+      return;
+    }
+    if (isFreeTextType(type)) {
+      const text = textValue.trim();
+      onAnswer({ kind: "text", text }, text || "—");
+      return;
+    }
+    if (isNumberType(type)) {
+      const n = Number(numberValue);
+      if (Number.isNaN(n)) return;
+      const unit = selectedUnit;
+      onAnswer(
+        { kind: "number", number: n, unit },
+        unit ? `${n} ${unit}` : String(n),
+      );
+      return;
+    }
+    const selected = buildSelectedOptions(content, selectedIds);
+    const display = selected.map((o) => o.displayText).join(", ") || "—";
+    onAnswer({ kind: "options", options: selected }, display);
+  }
+
   return (
     <div className="flex flex-col gap-4 border-t border-white/40 pt-4">
       <div>
         <p className="text-[11px] font-semibold uppercase tracking-widest text-primary/70">
           firstHx structured capture
         </p>
-        <h3 className="mt-1 text-[16px] font-semibold leading-snug text-foreground">
-          {content.title}
-        </h3>
+        {content.title && (
+          <h3 className="mt-1 text-[16px] font-semibold leading-snug text-foreground">
+            {content.title}
+          </h3>
+        )}
         {content.helperText && (
           <p className="mt-1 text-sm text-muted-foreground">{content.helperText}</p>
         )}
@@ -239,6 +308,13 @@ function FirstHxPanel({
         )}
       </div>
 
+      {content.html && (
+        <div
+          className="prose prose-sm max-w-none text-foreground"
+          dangerouslySetInnerHTML={{ __html: content.html }}
+        />
+      )}
+
       {error && (
         <div className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
@@ -246,48 +322,87 @@ function FirstHxPanel({
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
-        {options.map((option) => {
-          const isSelected = selectedIds.includes(option.id);
-          return (
-            <button
-              key={option.id}
-              type="button"
-              onClick={() => toggle(option.id, option.deselectOtherAnswers)}
+      {isFreeTextType(type) ? (
+        <textarea
+          value={textValue}
+          onChange={(e) => setTextValue(e.target.value)}
+          disabled={isPending}
+          placeholder={content.inputRequired ? "Type your answer…" : "Type your answer (optional)…"}
+          className="min-h-[100px] w-full resize-none rounded-xl border border-white/60 bg-white/30 px-4 py-3 text-[15px] leading-relaxed text-foreground placeholder:text-foreground/35 focus:border-primary/40 focus:bg-white/50 focus:outline-none"
+        />
+      ) : isNumberType(type) ? (
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <input
+            type="number"
+            value={numberValue}
+            min={0}
+            onChange={(e) => setNumberValue(e.target.value.replace(/-/g, ""))}
+            disabled={isPending}
+            placeholder="Enter a number"
+            className="w-full rounded-xl border border-white/60 bg-white/30 px-4 py-3 text-[15px] text-foreground placeholder:text-foreground/35 focus:border-primary/40 focus:bg-white/50 focus:outline-none"
+          />
+          {content.units && content.units.length > 0 && (
+            <select
+              value={selectedUnit}
+              onChange={(e) => setSelectedUnit(e.target.value)}
               disabled={isPending}
-              className={cn("intake-option", isSelected && "intake-option-selected")}
+              className="rounded-xl border border-white/60 bg-white/30 px-4 py-3 text-[15px] text-foreground focus:border-primary/40 focus:bg-white/50 focus:outline-none sm:w-40"
             >
-              <span className="flex items-center gap-3">
-                <span
-                  className={cn(
-                    "flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors",
-                    isSelected ? "border-primary bg-primary" : "border-foreground/25 bg-transparent",
-                  )}
-                >
-                  {isSelected && (
-                    <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden>
-                      <path
-                        d="M1 4l2.2 2.2L7 1.5"
-                        stroke="#fff"
-                        strokeWidth="1.5"
-                        fill="none"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  )}
+              {content.units.map((u) => (
+                <option key={u} value={u}>
+                  {u}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      ) : options.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {options.map((option) => {
+            const isSelected = selectedIds.includes(option.id);
+            return (
+              <button
+                key={option.id}
+                type="button"
+                onClick={() => toggle(option.id, option.deselectOtherAnswers)}
+                disabled={isPending}
+                className={cn("intake-option", isSelected && "intake-option-selected")}
+              >
+                <span className="flex items-center gap-3">
+                  <span
+                    className={cn(
+                      "flex size-4 shrink-0 items-center justify-center border transition-colors",
+                      isMulti ? "rounded-sm" : "rounded-full",
+                      isSelected
+                        ? "border-primary bg-primary"
+                        : "border-foreground/25 bg-transparent",
+                    )}
+                  >
+                    {isSelected && (
+                      <svg width="8" height="8" viewBox="0 0 8 8" aria-hidden>
+                        <path
+                          d="M1 4l2.2 2.2L7 1.5"
+                          stroke="#fff"
+                          strokeWidth="1.5"
+                          fill="none"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </span>
+                  {option.displayText}
                 </span>
-                {option.displayText}
-              </span>
-              {option.helperText && (
-                <span className="mt-1 block pl-7 text-xs text-muted-foreground">
-                  {option.helperText}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+                {option.helperText && (
+                  <span className="mt-1 block pl-7 text-xs text-muted-foreground">
+                    {option.helperText}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div className="flex items-center gap-3 pt-1">
         {content.backAllowed && (
@@ -305,7 +420,7 @@ function FirstHxPanel({
         <Button
           type="button"
           size="lg"
-          onClick={() => onAnswer(selectedIds)}
+          onClick={submit}
           disabled={isPending || !canSubmit}
           className="ml-auto"
         >
@@ -385,31 +500,19 @@ function ChatScreen({
     setInput("");
   }
 
-  function handleFirstHxAnswer(selectedIds: number[]) {
+  function handleFirstHxAnswer(answer: AnswerData, display: string) {
     if (!firstHxState?.content) return;
     const content = firstHxState.content;
-    const selectedOptions = buildSelectedOptions(content, selectedIds);
 
     startFirstHxTransition(async () => {
       try {
         setFirstHxError(null);
-        const next = await submitAnswer(firstHxState.mkey, content.id, {
-          kind: "options",
-          options: selectedOptions,
-        });
-        setFirstHxHistory((prev) => [
-          ...prev,
-          {
-            question: content.title,
-            answers: selectedOptions.map((o) => o.displayText),
-          },
-        ]);
+        const next = await submitAnswer(firstHxState.mkey, content.id, answer);
+        const turn: FirstHxTurn = { question: content.title, display };
+        setFirstHxHistory((prev) => [...prev, turn]);
 
         if (next.intakeStatus === "completed") {
-          const summary = formatFirstHxSummary([
-            ...firstHxHistory,
-            { question: content.title, answers: selectedOptions.map((o) => o.displayText) },
-          ]);
+          const summary = formatFirstHxSummary([...firstHxHistory, turn]);
           setFirstHxState(null);
           setFirstHxHistory([]);
           setMode("chat");
@@ -507,9 +610,7 @@ function ChatScreen({
 
 function formatFirstHxSummary(history: FirstHxTurn[]): string {
   if (history.length === 0) return "(no structured data captured)";
-  return history
-    .map((turn) => `- ${turn.question}: ${turn.answers.join(", ") || "(no answer)"}`)
-    .join("\n");
+  return history.map((turn) => `- ${turn.question}: ${turn.display}`).join("\n");
 }
 
 export function AiIntakeScreen({ greetingName }: Props) {
