@@ -1,0 +1,25 @@
+# Terraform working files
+.terraform/
+.terraform.lock.hcl.bak
+
+# State files (never commit — state lives in GCS)
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+
+# Variable files (may contain project IDs / secrets)
+terraform.tfvars
+*.auto.tfvars
+
+# Service account keys and any credentials downloaded during verification
+*.json
+!package.json
+!components.json
+!tsconfig.json
+
+# Crash logs
+crash.log
+crash.*.log
+
+# Plan output files
+*.tfplan
