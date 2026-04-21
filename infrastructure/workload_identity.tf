@@ -79,28 +79,26 @@ resource "google_iam_workload_identity_pool_provider" "vercel_oidc" {
     allowed_audiences = ["https://vercel.com/${var.vercel_team_slug}"]
   }
 
+  # Vercel OIDC tokens only guarantee the standard claims plus `sub`/`scope`.
+  # The team/project/environment info is encoded in `sub` as a colon-joined
+  # string, so we map only google.subject and bind on exact subject strings.
   attribute_mapping = {
-    "google.subject"        = "assertion.sub"
-    "attribute.owner"       = "assertion.owner"
-    "attribute.project"     = "assertion.project"
-    "attribute.environment" = "assertion.environment"
+    "google.subject" = "assertion.sub"
   }
-
-  attribute_condition = join(" && ", [
-    "assertion.owner == \"${var.vercel_team_slug}\"",
-    "assertion.project == \"${var.vercel_project_name}\"",
-    "assertion.environment in [${join(",", [for env in var.vercel_environments : "\"${env}\""])}]"
-  ])
 }
 
 # ---------- Let federated principals impersonate the SA ---------------------
 #
-# Scoped to federated identities whose OIDC claim `project` matches the
-# configured Vercel project, so other Vercel projects in the same team (if any)
-# cannot assume this SA.
+# One binding per Vercel environment we want to allow. The subject format is
+# defined by Vercel: owner:<team>:project:<project>:environment:<env>.
 
 resource "google_service_account_iam_member" "vercel_impersonate" {
+  for_each = toset([
+    for env in var.vercel_environments :
+    "owner:${var.vercel_team_slug}:project:${var.vercel_project_name}:environment:${env}"
+  ])
+
   service_account_id = google_service_account.vercel_vertex.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.vercel.workload_identity_pool_id}/attribute.project/${var.vercel_project_name}"
+  member             = "principal://iam.googleapis.com/projects/${data.google_project.current.number}/locations/global/workloadIdentityPools/${google_iam_workload_identity_pool.vercel.workload_identity_pool_id}/subject/${each.value}"
 }
