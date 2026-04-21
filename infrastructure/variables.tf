@@ -1,52 +1,48 @@
 variable "project_id" {
-  description = "The GCP project that will contain the Cloud SQL instance."
+  description = "The GCP project that owns the Workload Identity Pool and impersonated service account."
   type        = string
 }
 
 variable "region" {
-  description = "GCP region for the Cloud SQL instance."
+  description = "Default GCP region. WIF itself is global; this is just the provider default."
   type        = string
-  default     = "northamerica-northeast2"
+  default     = "us-central1"
 }
 
-variable "instance_name" {
-  description = "Cloud SQL instance name."
+# =============================================================================
+# Vercel Workload Identity Federation
+# =============================================================================
+
+variable "vercel_team_slug" {
+  description = "Vercel team slug (from your Vercel team URL). Used in the OIDC issuer URI and token audience."
   type        = string
-  default     = "team-conflict-db"
 }
 
-variable "database_name" {
-  description = "Database name created inside the Cloud SQL instance."
+variable "vercel_project_name" {
+  description = "Name of the Vercel project allowed to federate. Taken from Vercel project settings; appears in the OIDC `project` claim."
   type        = string
-  default     = "team_conflict"
 }
 
-variable "tier" {
-  description = "Cloud SQL machine tier."
+variable "vercel_environments" {
+  description = "Vercel environments allowed to federate. Options: production, preview, development."
+  type        = list(string)
+  default     = ["production"]
+}
+
+variable "vercel_pool_id" {
+  description = "Workload Identity Pool ID for Vercel."
   type        = string
-  default     = "db-g1-small"
+  default     = "vercel-pool"
 }
 
-variable "postgres_version" {
-  description = "Cloud SQL Postgres engine version."
+variable "vercel_provider_id" {
+  description = "Workload Identity Pool Provider ID for Vercel OIDC."
   type        = string
-  default     = "POSTGRES_17"
+  default     = "vercel-oidc"
 }
 
-variable "disk_size_gb" {
-  description = "Initial data disk size in GB (auto-grow is enabled)."
-  type        = number
-  default     = 10
-}
-
-variable "deletion_protection" {
-  description = "Deletion protection on the Cloud SQL instance. Flip to false only when intentionally tearing down."
-  type        = bool
-  default     = true
-}
-
-variable "app_user_name" {
-  description = "Postgres BUILT_IN user name the Next.js app connects as."
+variable "vercel_service_account_id" {
+  description = "Service account ID impersonated by Vercel deployments."
   type        = string
-  default     = "app"
+  default     = "vercel-vertex"
 }
