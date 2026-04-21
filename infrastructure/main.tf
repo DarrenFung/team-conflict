@@ -37,6 +37,7 @@ resource "google_sql_database_instance" "main" {
 
   settings {
     tier              = var.tier
+    edition           = "ENTERPRISE"
     availability_type = "ZONAL"
     disk_size         = var.disk_size_gb
     disk_type         = "PD_SSD"
@@ -117,45 +118,40 @@ resource "google_sql_user" "postgres_admin" {
 }
 
 # =============================================================================
-# App service account (Vercel authenticates as this SA)
+# App database user (BUILT_IN, password-based auth for Vercel)
+#
+# Note: the original design used an IAM DB user with a service account key.
+# The project's org policy `constraints/iam.managed.disableServiceAccountKeyCreation`
+# blocks SA key creation, so the app uses password auth instead. SSL is still
+# required by `ssl_mode = "ENCRYPTED_ONLY"` on the instance.
 # =============================================================================
 
-resource "google_service_account" "app" {
-  account_id   = var.app_service_account_id
-  display_name = "Team Conflict App (Vercel)"
-  description  = "Used by the Next.js app on Vercel to authenticate to Cloud SQL via IAM DB auth."
-
-  depends_on = [google_project_service.iam]
+resource "random_password" "app_user" {
+  length           = 32
+  special          = true
+  override_special = "!@#$%^&*()-_=+[]{}"
 }
 
-resource "google_project_iam_member" "app_cloudsql_client" {
-  project = var.project_id
-  role    = "roles/cloudsql.client"
-  member  = "serviceAccount:${google_service_account.app.email}"
+resource "google_secret_manager_secret" "app_user_password" {
+  secret_id = "team-conflict-app-db-password"
+
+  replication {
+    auto {}
+  }
+
+  depends_on = [google_project_service.secretmanager]
 }
 
-resource "google_project_iam_member" "app_cloudsql_instance_user" {
-  project = var.project_id
-  role    = "roles/cloudsql.instanceUser"
-  member  = "serviceAccount:${google_service_account.app.email}"
+resource "google_secret_manager_secret_version" "app_user_password" {
+  secret      = google_secret_manager_secret.app_user_password.id
+  secret_data = random_password.app_user.result
 }
 
-# IAM user inside Postgres — name must be the SA email with ".gserviceaccount.com" stripped
-resource "google_sql_user" "app_iam" {
-  name     = trimsuffix(google_service_account.app.email, ".gserviceaccount.com")
+resource "google_sql_user" "app" {
+  name     = var.app_user_name
   instance = google_sql_database_instance.main.name
-  type     = "CLOUD_IAM_SERVICE_ACCOUNT"
+  type     = "BUILT_IN"
+  password = random_password.app_user.result
 
-  depends_on = [
-    google_project_iam_member.app_cloudsql_instance_user,
-    google_sql_database.main,
-  ]
-}
-
-# =============================================================================
-# Service account key (surfaced once via `terraform output` for Vercel)
-# =============================================================================
-
-resource "google_service_account_key" "app" {
-  service_account_id = google_service_account.app.name
+  depends_on = [google_sql_database.main]
 }
