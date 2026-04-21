@@ -7,9 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// A user in our system. Two populations live here:
+//   - Guests: clerkId and email are null. Identified by an HttpOnly
+//     `guestUserId` cookie pinned to this row's `id`.
+//   - Claimed users: clerkId is set once the guest signs up/signs in. At claim
+//     time their pre-sign-up encounters/documents are reparented onto a
+//     pre-existing claimed row if one exists, or the guest row is promoted.
+// `id` is a stable cuid — everything downstream (encounters, documents) keys
+// off it and doesn't care which population the user is in.
 model User {
-  id         String      @id
-  email      String      @unique
+  id         String      @id @default(cuid())
+  clerkId    String?     @unique
+  email      String?     @unique
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
   encounters Encounter[]

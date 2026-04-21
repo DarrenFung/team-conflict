@@ -1,9 +1,9 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
-import { currentUser } from "@clerk/nextjs/server";
 import { getDocumentsBucket, getStorageClient } from "@/lib/gcs";
 import { prisma } from "@/lib/db";
+import { getOrCreateActiveUser } from "@/lib/auth";
 
 // 15 minutes is plenty for a single-file upload and keeps exposure short if a
 // URL leaks.
@@ -13,8 +13,7 @@ export async function getUploadUrl(input: {
   filename: string;
   contentType: string;
 }): Promise<{ signedUrl: string; objectPath: string }> {
-  const user = await currentUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getOrCreateActiveUser();
 
   // Keep filename for display in the path but scrub anything that could break
   // downstream tooling or escape the prefix.
@@ -40,8 +39,7 @@ export async function recordDocument(input: {
   sizeBytes: number;
   description: string;
 }): Promise<{ id: string }> {
-  const user = await currentUser();
-  if (!user) throw new Error("Not authenticated");
+  const user = await getOrCreateActiveUser();
 
   if (input.encounterId) {
     const encounter = await prisma.encounter.findUnique({

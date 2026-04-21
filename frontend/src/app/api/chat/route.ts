@@ -8,9 +8,9 @@ import {
 } from "ai";
 import { ExternalAccountClient } from "google-auth-library";
 import { getVercelOidcToken } from "@vercel/oidc";
-import { currentUser } from "@clerk/nextjs/server";
 import { modules } from "@/modules/registry";
 import { prisma } from "@/lib/db";
+import { getOrCreateActiveUser } from "@/lib/auth";
 
 export const maxDuration = 30;
 
@@ -100,10 +100,7 @@ export async function POST(req: Request) {
     return new Response("encounterId is required", { status: 400 });
   }
 
-  const user = await currentUser();
-  if (!user) {
-    return new Response("Unauthorized", { status: 401 });
-  }
+  const user = await getOrCreateActiveUser();
 
   const encounter = await prisma.encounter.findUnique({
     where: { id: encounterId },
