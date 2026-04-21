@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+project_id = "gsv-hack-26-conflict"
+
+# Optional overrides (defaults shown):
+# region               = "northamerica-northeast2"
+# instance_name        = "team-conflict-db"
+# database_name        = "team_conflict"
+# tier                 = "db-g1-small"
+# postgres_version     = "POSTGRES_17"
+# disk_size_gb         = 10
+# deletion_protection  = true
