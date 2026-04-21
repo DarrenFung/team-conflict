@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { AlertCircle, CheckCircle2, ChevronLeft, Send } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   goBack as goBackAction,
@@ -13,6 +14,7 @@ import {
   type AnswerData,
 } from "@/app/actions/firsthx";
 import type { IntakeContent, IntakeOption, IntakeState } from "@/lib/firsthx";
+import { PostIntakeAccountPrompt } from "@/components/intake/post-intake-account-prompt";
 
 function isMultiSelectType(type: string) {
   return type === "selectAll" || type === "selectAllBodyParts";
@@ -74,10 +76,56 @@ function cleanUserText(raw: string) {
   return "(Structured symptom intake completed)";
 }
 
+/** Fixed top nav — logo + auth actions, matches page.tsx header */
+function NavaraTopNav() {
+  return (
+    <header className="fixed inset-x-0 top-0 z-50 flex h-[60px] items-center justify-between border-b border-[rgba(24,95,165,0.12)] bg-white/90 px-6 backdrop-blur-[10px] sm:px-8">
+      <Link
+        href="/"
+        className="font-[family-name:var(--font-dm-serif)] text-[20px] tracking-tight text-foreground"
+      >
+        Nav<span className="text-primary">ara</span>
+      </Link>
+      <div className="flex items-center gap-2">
+        <Link
+          href="/sign-in"
+          className={cn(
+            buttonVariants({ variant: "outline", size: "sm" }),
+            "border-primary/25 text-primary text-[13px] hover:border-primary hover:bg-secondary",
+          )}
+        >
+          Log in
+        </Link>
+        <Link
+          href="/sign-up"
+          className={cn(
+            buttonVariants({ size: "sm" }),
+            "text-[13px] font-medium shadow-[0_2px_10px_rgba(24,95,165,0.2)] hover:bg-primary/90",
+          )}
+        >
+          Sign up
+        </Link>
+      </div>
+    </header>
+  );
+}
+
+/** Subtle radial glow — same as main::before in navara-landing-v2.html */
+function NavaraBackgroundGlow() {
+  return (
+    <div
+      className="pointer-events-none absolute left-1/2 top-[45%] -translate-x-1/2 -translate-y-1/2 size-[600px] rounded-full"
+      style={{
+        background: "radial-gradient(circle, rgba(24,95,165,0.05) 0%, transparent 70%)",
+      }}
+    />
+  );
+}
+
 function FirstHxBadge() {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-black/8 bg-black/5 px-2.5 py-1 text-[11px] font-medium text-foreground/50 tracking-wide">
-      <svg width="9" height="9" viewBox="0 0 10 10" className="shrink-0" aria-hidden>
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] px-2.5 py-1 text-[11px] font-medium tracking-wide text-muted-foreground">
+      <svg width="9" height="9" viewBox="0 0 10 10" className="shrink-0 text-primary/70" aria-hidden>
         <circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" strokeWidth="1.1" />
         <path d="M5 2.5v2.8L6.8 6.5" stroke="currentColor" strokeWidth="1.1" fill="none" strokeLinecap="round" />
       </svg>
@@ -88,17 +136,23 @@ function FirstHxBadge() {
 
 function Header({ greetingName }: { greetingName: string }) {
   return (
-    <header className="mb-6 flex items-center justify-between">
+    <header className="mb-8 flex items-center justify-between">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-primary/70">
+        <p className="text-xs font-semibold uppercase tracking-widest text-primary/80">
           Intake Assessment
         </p>
-        <h1 className="mt-0.5 text-lg font-semibold text-foreground">Hi {greetingName}</h1>
+        <h1 className="mt-1 text-lg font-semibold text-foreground">Hi {greetingName}</h1>
       </div>
       <FirstHxBadge />
     </header>
   );
 }
+
+const REASON_PROMPTS = [
+  "I've had knee pain for 3 weeks and don't know if I need physio or a specialist",
+  "I'm feeling anxious and overwhelmed and don't know where to get help",
+  "I need a family doctor and don't know how to find one covered by my plan",
+];
 
 function ReasonScreen({
   greetingName,
@@ -112,42 +166,93 @@ function ReasonScreen({
   const trimmed = reason.trim();
 
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-2xl flex-col px-4 py-8 sm:px-6 lg:py-12">
-      <Header greetingName={greetingName} />
-      <div className="intake-glass flex flex-grow flex-col gap-5 rounded-2xl p-6 sm:p-8">
-        <div>
-          <h2 className="text-[22px] font-semibold leading-snug tracking-tight text-foreground">
-            What&apos;s going on today?
-          </h2>
-          <p className="mt-1.5 text-sm text-muted-foreground">
-            A few words is plenty — we&apos;ll ask follow-up questions from there.
+    <div className="relative flex min-h-svh flex-col bg-white">
+      <NavaraTopNav />
+      <NavaraBackgroundGlow />
+
+      {/* Full-height content column below fixed nav */}
+      <main className="relative z-10 flex flex-1 flex-col px-4 pt-[60px] pb-8 sm:px-6">
+        {/* Logo + tagline — centered, compact */}
+        <div className="mx-auto mt-10 flex w-full max-w-3xl flex-col items-center text-center">
+          <p className="font-[family-name:var(--font-dm-serif)] text-[52px] leading-none tracking-[-2px] text-foreground">
+            Nav<span className="text-primary">ara</span>
+          </p>
+          <p className="mt-2 text-[15px] font-light tracking-[0.01em] text-muted-foreground">
+            Navigate care with confidence
           </p>
         </div>
-        <div
-          className="relative flex-grow cursor-text rounded-xl border border-white/60 bg-white/30 p-4 transition-colors focus-within:border-primary/40 focus-within:bg-white/50"
-          onClick={() => textareaRef.current?.focus()}
-        >
-          <textarea
-            ref={textareaRef}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey && trimmed) {
-                e.preventDefault();
-                onContinue(trimmed);
-              }
-            }}
-            placeholder="Describe what you're experiencing… (Enter to continue, Shift+Enter for newline)"
-            className="h-full min-h-[140px] w-full resize-none bg-transparent text-[16px] leading-relaxed text-foreground placeholder:text-foreground/35 focus:outline-none"
-          />
+
+        {/* Composer — compact card (~pic2): short input + action bar */}
+        <div className="mx-auto mt-8 flex w-full max-w-3xl flex-1 flex-col">
+          <div
+            className={cn(
+              "flex h-[180px] cursor-text flex-col overflow-hidden rounded-[14px] border-[1.5px] border-[rgba(24,95,165,0.2)] bg-white shadow-[0_2px_16px_rgba(24,95,165,0.06)] transition-[border-color,box-shadow] duration-200",
+              "focus-within:border-primary focus-within:shadow-[0_4px_24px_rgba(24,95,165,0.12)]",
+            )}
+            onClick={() => textareaRef.current?.focus()}
+          >
+            <textarea
+              ref={textareaRef}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && trimmed) {
+                  e.preventDefault();
+                  onContinue(trimmed);
+                }
+              }}
+              placeholder="Describe what's going on — e.g."
+              className="min-h-0 flex-1 resize-none bg-transparent px-4 pt-3 pb-2 text-[15px] leading-relaxed text-foreground placeholder:text-[#A0AEC0] focus:outline-none sm:px-5 sm:pt-[14px]"
+            />
+
+            {/* Toolbar — divider + left pill + right send */}
+            <div className="flex shrink-0 items-center justify-between border-t border-[rgba(24,95,165,0.12)] px-3 py-2.5">
+              <button
+                type="button"
+                aria-disabled
+                className="flex items-center gap-1.5 rounded-lg border border-[rgba(24,95,165,0.12)] px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-[rgba(24,95,165,0.25)] hover:bg-[#E6F1FB] hover:text-primary"
+              >
+                <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+                  <rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.3" />
+                  <path d="M1 11l4-4 3 3 2-2 4 4" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                </svg>
+                Photo / Video / File
+              </button>
+
+              <button
+                type="button"
+                disabled={!trimmed}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (trimmed) onContinue(trimmed);
+                }}
+                className="flex size-10 items-center justify-center rounded-[10px] bg-primary text-primary-foreground shadow-[0_2px_8px_rgba(24,95,165,0.25)] transition-transform hover:bg-[#0e4a87] active:scale-[1.04] disabled:pointer-events-none disabled:opacity-40"
+                aria-label="Continue"
+              >
+                <Send className="size-[18px]" />
+              </button>
+            </div>
+          </div>
+
+          {/* Example prompts — full-width, stacked vertically */}
+          <div className="mt-4 flex flex-col gap-2.5">
+            {REASON_PROMPTS.map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                onClick={() => {
+                  setReason(chip);
+                  textareaRef.current?.focus();
+                }}
+                className="w-full rounded-[20px] border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] px-4 py-3 text-left text-sm text-muted-foreground transition-colors hover:border-[rgba(24,95,165,0.25)] hover:bg-[#E6F1FB] hover:text-primary"
+              >
+                {chip}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex items-center justify-end pt-1">
-          <Button type="button" size="lg" disabled={!trimmed} onClick={() => onContinue(trimmed)}>
-            Continue
-          </Button>
-        </div>
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }
 
@@ -178,10 +283,10 @@ function ChatHistory({
           <div
             key={m.id}
             className={cn(
-              "max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed",
+              "max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed shadow-sm",
               m.role === "user"
-                ? "ml-auto bg-primary text-primary-foreground"
-                : "mr-auto border border-white/60 bg-white/60 text-foreground",
+                ? "ml-auto bg-primary text-primary-foreground shadow-[0_2px_10px_rgba(24,95,165,0.2)]"
+                : "mr-auto border border-[rgba(24,95,165,0.15)] bg-white text-foreground",
             )}
           >
             <p className="whitespace-pre-wrap">{text}</p>
@@ -189,7 +294,7 @@ function ChatHistory({
         );
       })}
       {isStreaming && (
-        <div className="mr-auto rounded-2xl border border-white/60 bg-white/60 px-4 py-2.5 text-sm text-muted-foreground">
+        <div className="mr-auto rounded-2xl border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] px-4 py-2.5 text-sm text-muted-foreground">
           Thinking…
         </div>
       )}
@@ -232,7 +337,7 @@ function FirstHxPanel({
 
   if (!content) {
     return (
-      <div className="border-t border-white/40 px-1 pt-4 text-sm text-muted-foreground">
+      <div className="border-t border-[rgba(24,95,165,0.12)] px-1 pt-4 text-sm text-muted-foreground">
         Loading structured questions…
       </div>
     );
@@ -290,13 +395,13 @@ function FirstHxPanel({
   }
 
   return (
-    <div className="flex flex-col gap-4 border-t border-white/40 pt-4">
+    <div className="flex flex-col gap-4 border-t border-[rgba(24,95,165,0.12)] pt-4">
       <div>
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-primary/70">
+        <p className="text-[11px] font-semibold uppercase tracking-widest text-primary/80">
           firstHx structured capture
         </p>
         {content.title && (
-          <h3 className="mt-1 text-[16px] font-semibold leading-snug text-foreground">
+          <h3 className="mt-1 font-[family-name:var(--font-dm-serif)] text-[17px] font-normal leading-snug text-foreground">
             {content.title}
           </h3>
         )}
@@ -544,67 +649,93 @@ function ChatScreen({
   const isStreaming = status === "submitted" || status === "streaming";
 
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-2xl flex-col px-4 py-8 sm:px-6 lg:py-12">
-      <Header greetingName={greetingName} />
+    <div className="relative min-h-svh bg-white">
+      <NavaraTopNav />
+      <NavaraBackgroundGlow />
 
-      {error ? (
-        <div className="intake-glass flex items-start gap-3 rounded-2xl p-5 text-sm text-destructive">
-          <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          <p>{error.message || "Something went wrong."}</p>
-        </div>
-      ) : (
-        <div className="intake-glass flex flex-grow flex-col gap-4 rounded-2xl p-6 sm:p-8">
-          <ChatHistory messages={messages} isStreaming={isStreaming} />
+      <main className="relative z-10 mx-auto flex min-h-svh w-full max-w-[620px] flex-col px-6 pb-12 pt-[76px] sm:px-8">
+        <Header greetingName={greetingName} />
 
-          {mode === "complete" ? (
-            <div className="flex flex-col items-center gap-2 border-t border-white/40 pt-4">
-              <CheckCircle2 className="size-8 text-primary" />
-              <p className="text-sm font-semibold text-foreground">Assessment complete</p>
-              <p className="text-xs text-muted-foreground">
-                Your intake summary has been recorded above.
-              </p>
+        {error ? (
+          <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-5 text-sm text-destructive">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="mt-0.5 size-4 shrink-0" />
+              <p>{error.message || "Something went wrong."}</p>
             </div>
-          ) : mode === "firsthx" && firstHxState ? (
-            <FirstHxPanel
-              state={firstHxState}
-              isPending={firstHxPending}
-              error={firstHxError}
-              onAnswer={handleFirstHxAnswer}
-              onBack={handleFirstHxBack}
-            />
-          ) : mode === "firsthx" ? (
-            <div className="border-t border-white/40 pt-4 text-sm text-muted-foreground">
-              Starting structured symptom capture…
-            </div>
-          ) : (
-            <div className="flex items-end gap-2 border-t border-white/40 pt-4">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSend();
-                  }
-                }}
-                placeholder="Type your answer…"
-                rows={1}
-                disabled={status !== "ready"}
-                className="flex-grow resize-none rounded-xl border border-white/60 bg-white/50 px-4 py-2.5 text-[15px] leading-relaxed text-foreground placeholder:text-foreground/35 focus:border-primary/40 focus:bg-white/70 focus:outline-none disabled:opacity-60"
+          </div>
+        ) : (
+          <div
+            className={cn(
+              "flex flex-grow flex-col gap-4 rounded-2xl border-[1.5px] border-[rgba(24,95,165,0.15)] bg-white/80 p-6 shadow-[0_2px_16px_rgba(24,95,165,0.06)] backdrop-blur-sm sm:p-8",
+            )}
+          >
+            <ChatHistory messages={messages} isStreaming={isStreaming} />
+
+            {mode === "complete" ? (
+              <div className="flex flex-col gap-4 border-t border-[rgba(24,95,165,0.12)] pt-6">
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <CheckCircle2 className="size-9 text-primary drop-shadow-[0_2px_8px_rgba(24,95,165,0.2)]" />
+                  <p className="font-[family-name:var(--font-dm-serif)] text-lg text-foreground">
+                    Assessment complete
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Your intake summary has been recorded above.
+                  </p>
+                </div>
+                <PostIntakeAccountPrompt />
+              </div>
+            ) : mode === "firsthx" && firstHxState ? (
+              <FirstHxPanel
+                state={firstHxState}
+                isPending={firstHxPending}
+                error={firstHxError}
+                onAnswer={handleFirstHxAnswer}
+                onBack={handleFirstHxBack}
               />
-              <Button
-                type="button"
-                size="lg"
-                onClick={handleSend}
-                disabled={!input.trim() || status !== "ready"}
-              >
-                <Send className="size-4" />
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-    </main>
+            ) : mode === "firsthx" ? (
+              <div className="border-t border-[rgba(24,95,165,0.12)] pt-4 text-sm text-muted-foreground">
+                Starting structured symptom capture…
+              </div>
+            ) : (
+              <div className="relative border-t border-[rgba(24,95,165,0.12)] pt-4">
+                <div
+                  className={cn(
+                    "relative overflow-hidden rounded-[14px] border-[1.5px] border-[rgba(24,95,165,0.2)] bg-white shadow-[0_2px_16px_rgba(24,95,165,0.06)] transition-[border-color,box-shadow] duration-200",
+                    "focus-within:border-primary focus-within:shadow-[0_4px_24px_rgba(24,95,165,0.12)]",
+                  )}
+                >
+                  <textarea
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    placeholder="Type your answer…"
+                    disabled={status !== "ready"}
+                    rows={3}
+                    className="block min-h-[100px] max-h-[140px] w-full resize-none bg-transparent px-4 pb-14 pt-3 text-[15px] leading-relaxed text-foreground placeholder:text-[#A0AEC0] focus:outline-none disabled:opacity-60"
+                  />
+                  <div className="absolute bottom-2.5 right-2.5">
+                    <button
+                      type="button"
+                      onClick={handleSend}
+                      disabled={!input.trim() || status !== "ready"}
+                      className="flex size-10 items-center justify-center rounded-[10px] bg-primary text-primary-foreground shadow-[0_2px_8px_rgba(24,95,165,0.25)] transition-transform hover:bg-[#0e4a87] active:scale-[1.04] disabled:pointer-events-none disabled:opacity-40"
+                      aria-label="Send"
+                    >
+                      <Send className="size-[18px]" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+    </div>
   );
 }
 
