@@ -43,3 +43,6 @@ frontend/.vercel
 
 # superpowers local artifacts (specs, plans, notes)
 /docs/superpowers/
+
+# worktrees
+/.worktrees/
