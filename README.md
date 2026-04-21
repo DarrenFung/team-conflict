@@ -22,6 +22,25 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## UI Components
+
+This project uses [**shadcn/ui**](https://ui.shadcn.com) extensively for UI components. Prefer shadcn primitives over custom-built components or other libraries.
+
+Initialize shadcn (one-time):
+
+```bash
+npx shadcn@latest init
+```
+
+Add components as needed:
+
+```bash
+npx shadcn@latest add button
+npx shadcn@latest add dialog form input
+```
+
+Components are generated into `src/components/ui/` and owned by this repo — edit them freely. Compose feature components from shadcn primitives; only hand-roll UI when no primitive fits. See the [component registry](https://ui.shadcn.com/docs/components) for what's available.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:
