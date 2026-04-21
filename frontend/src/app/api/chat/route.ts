@@ -1,5 +1,6 @@
-import { vertex } from "@ai-sdk/google-vertex";
+import { vertex as defaultVertex, createVertex } from "@ai-sdk/google-vertex";
 import { convertToModelMessages, streamText, type UIMessage } from "ai";
+import { ExternalAccountClient } from "google-auth-library";
 
 export const maxDuration = 30;
 
@@ -36,6 +37,49 @@ When the intake is complete, output a clinician-facing summary with sections:
 - Review of systems
 
 End the final turn with [INTAKE_COMPLETE] on its own line. Do not emit that marker before the summary is fully written.`;
+
+// Local dev: ADC via `gcloud auth application-default login`.
+// Vercel prod: Workload Identity Federation — Vercel's OIDC token is
+// exchanged for short-lived GCP credentials that impersonate the configured
+// service account. No service account keys (blocked by org policy).
+function getVertexProvider() {
+  const oidcToken = process.env.VERCEL_OIDC_TOKEN;
+  if (!oidcToken) return defaultVertex;
+
+  const audience = process.env.GCP_WORKLOAD_IDENTITY_AUDIENCE;
+  const saEmail = process.env.GCP_SERVICE_ACCOUNT_EMAIL;
+  if (!audience || !saEmail) {
+    throw new Error(
+      "WIF misconfigured: set GCP_WORKLOAD_IDENTITY_AUDIENCE and GCP_SERVICE_ACCOUNT_EMAIL",
+    );
+  }
+
+  const authClient = ExternalAccountClient.fromJSON({
+    type: "external_account",
+    audience,
+    subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
+    token_url: "https://sts.googleapis.com/v1/token",
+    service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${saEmail}:generateAccessToken`,
+    subject_token_supplier: {
+      // Read at call time so token refreshes are picked up per-request.
+      getSubjectToken: async () => {
+        const token = process.env.VERCEL_OIDC_TOKEN;
+        if (!token) throw new Error("VERCEL_OIDC_TOKEN not present");
+        return token;
+      },
+    },
+  });
+
+  if (!authClient) {
+    throw new Error("Failed to construct ExternalAccountClient for WIF");
+  }
+
+  return createVertex({
+    googleAuthOptions: { authClient },
+  });
+}
+
+const vertex = getVertexProvider();
 
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();

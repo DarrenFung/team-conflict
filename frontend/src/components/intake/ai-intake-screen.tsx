@@ -393,7 +393,10 @@ function ChatScreen({
     startFirstHxTransition(async () => {
       try {
         setFirstHxError(null);
-        const next = await submitAnswer(firstHxState.mkey, content.id, selectedOptions);
+        const next = await submitAnswer(firstHxState.mkey, content.id, {
+          kind: "options",
+          options: selectedOptions,
+        });
         setFirstHxHistory((prev) => [
           ...prev,
           {
@@ -421,11 +424,12 @@ function ChatScreen({
   }
 
   function handleFirstHxBack() {
-    if (!firstHxState) return;
+    if (!firstHxState?.content) return;
+    const contentId = firstHxState.content.id;
     startFirstHxTransition(async () => {
       try {
         setFirstHxError(null);
-        const prev = await goBackAction(firstHxState.mkey);
+        const prev = await goBackAction(firstHxState.mkey, contentId);
         setFirstHxState(prev);
         setFirstHxHistory((h) => h.slice(0, -1));
       } catch (err) {
