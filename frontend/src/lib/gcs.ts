@@ -1,6 +1,6 @@
 import "server-only";
 import { Storage, type StorageOptions } from "@google-cloud/storage";
-import { ExternalAccountClient } from "google-auth-library";
+import { ExternalAccountClient, Impersonated } from "google-auth-library";
 import { getVercelOidcToken } from "@vercel/oidc";
 
 // Local dev: ADC via `gcloud auth application-default login`. For signed URLs
@@ -8,9 +8,13 @@ import { getVercelOidcToken } from "@vercel/oidc";
 // `--impersonate-service-account=<vercel-vertex SA email>` (requires
 // `roles/iam.serviceAccountTokenCreator` on that SA).
 //
-// Vercel prod: same WIF flow Vertex uses — OIDC token exchanged for an
-// access token impersonating the SA, which then calls iamcredentials.signBlob
-// to sign URLs without ever handling an SA key.
+// Vercel prod: Vercel OIDC → STS federated token via ExternalAccountClient,
+// then wrapped in `Impersonated` targeting the SA. The wrapping matters for
+// signed URLs — `Impersonated` exposes the SA email so @google-cloud/storage
+// can route signing through iamcredentials.signBlob instead of bailing with
+// "Unable to find credentials".
+const STORAGE_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"];
+
 let cached: Storage | undefined;
 
 export function getStorageClient(): Storage {
@@ -29,24 +33,32 @@ export function getStorageClient(): Storage {
     );
   }
 
-  const authClient = ExternalAccountClient.fromJSON({
+  // Federated client — produces an STS token scoped to the Vercel OIDC
+  // subject, without jumping straight to SA impersonation.
+  const sourceClient = ExternalAccountClient.fromJSON({
     type: "external_account",
     audience,
     subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
     token_url: "https://sts.googleapis.com/v1/token",
-    service_account_impersonation_url: `https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/${saEmail}:generateAccessToken`,
     subject_token_supplier: {
       getSubjectToken: () => getVercelOidcToken(),
     },
   });
-  if (!authClient) {
+  if (!sourceClient) {
     throw new Error("Failed to construct ExternalAccountClient for WIF");
   }
+
+  const impersonated = new Impersonated({
+    sourceClient,
+    targetPrincipal: saEmail,
+    lifetime: 3600,
+    targetScopes: STORAGE_SCOPES,
+  });
 
   // `@google-cloud/storage` bundles its own copy of `google-auth-library`, so
   // the `AuthClient` shape from the top-level package doesn't match nominally
   // even though it's identical at runtime. Cast via unknown to sidestep.
-  cached = new Storage({ authClient } as unknown as StorageOptions);
+  cached = new Storage({ authClient: impersonated } as unknown as StorageOptions);
   return cached;
 }
 
