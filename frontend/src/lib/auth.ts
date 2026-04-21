@@ -14,20 +14,45 @@ export type ActiveUser = { id: string; isGuest: boolean };
 // Returns the current user for a request — either the Clerk-authed user
 // (upserted if missing) or a guest keyed by an HttpOnly cookie. Use this
 // instead of Clerk's `currentUser()` whenever the call site needs to write
-// encounters/documents.
+// encounters/attachments.
 export async function getOrCreateActiveUser(): Promise<ActiveUser> {
   const { userId: clerkId } = await auth();
 
   if (clerkId) {
     const clerkUser = await currentUser();
     const email = clerkUser?.emailAddresses[0]?.emailAddress ?? null;
-    const user = await prisma.user.upsert({
+
+    // Look up by clerkId first. If nothing matches but an email-matched row
+    // exists (e.g. a previous session that never reached /app to run the
+    // claim, or a legacy orphan), link it instead of trying to create — the
+    // unique constraint on email would otherwise blow up the upsert.
+    const byClerkId = await prisma.user.findUnique({
       where: { clerkId },
-      create: { clerkId, email },
-      update: email ? { email } : {},
+      select: { id: true, email: true },
+    });
+    if (byClerkId) {
+      if (email && byClerkId.email !== email) {
+        await prisma.user.update({ where: { id: byClerkId.id }, data: { email } });
+      }
+      return { id: byClerkId.id, isGuest: false };
+    }
+
+    if (email) {
+      const byEmail = await prisma.user.findUnique({
+        where: { email },
+        select: { id: true },
+      });
+      if (byEmail) {
+        await prisma.user.update({ where: { id: byEmail.id }, data: { clerkId } });
+        return { id: byEmail.id, isGuest: false };
+      }
+    }
+
+    const created = await prisma.user.create({
+      data: { clerkId, email },
       select: { id: true },
     });
-    return { id: user.id, isGuest: false };
+    return { id: created.id, isGuest: false };
   }
 
   const jar = await cookies();
