@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -9,11 +8,11 @@ import {
   type UIMessage,
 } from "ai";
 import { AlertCircle, CheckCircle2, Send } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { findModule } from "@/modules/registry";
 import { PostIntakeAccountPrompt } from "@/components/intake/post-intake-account-prompt";
 import { createEncounter } from "@/app/actions/encounter";
+import { NavaraTopNav } from "@/components/layout/navara-top-nav";
 
 const COMPLETION_MARKER = "[INTAKE_COMPLETE]";
 
@@ -23,39 +22,6 @@ type Props = {
 
 type Step = "reason" | "chat";
 
-/** Fixed top nav — logo + auth actions, matches page.tsx header */
-function NavaraTopNav() {
-  return (
-    <header className="fixed inset-x-0 top-0 z-50 flex h-[60px] items-center justify-between border-b border-[rgba(24,95,165,0.12)] bg-white/90 px-6 backdrop-blur-[10px] sm:px-8">
-      <Link
-        href="/"
-        className="font-[family-name:var(--font-dm-serif)] text-[20px] tracking-tight text-foreground"
-      >
-        Nav<span className="text-primary">ara</span>
-      </Link>
-      <div className="flex items-center gap-2">
-        <Link
-          href="/sign-in"
-          className={cn(
-            buttonVariants({ variant: "outline", size: "sm" }),
-            "border-primary/25 text-primary text-[13px] hover:border-primary hover:bg-secondary",
-          )}
-        >
-          Log in
-        </Link>
-        <Link
-          href="/sign-up"
-          className={cn(
-            buttonVariants({ size: "sm" }),
-            "text-[13px] font-medium shadow-[0_2px_10px_rgba(24,95,165,0.2)] hover:bg-primary/90",
-          )}
-        >
-          Sign up
-        </Link>
-      </div>
-    </header>
-  );
-}
 
 /** Subtle radial glow — same as main::before in navara-landing-v2.html */
 function NavaraBackgroundGlow() {
