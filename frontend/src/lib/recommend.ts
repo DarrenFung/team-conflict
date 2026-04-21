@@ -67,6 +67,7 @@ export type RecommendInput = {
   symptoms: string;
   intakeSummary: string;
   location?: { lat: number; lon: number };
+  encounterId?: string;
 };
 
 export async function recommend(input: RecommendInput): Promise<string> {
@@ -126,7 +127,23 @@ ${titleList}`,
         })
       : [];
 
-  // 5. Assemble context
+  // 5. Load patient documents (if encounter is known)
+  let attachmentContext = "";
+  if (input.encounterId) {
+    const attachments = await prisma.attachment.findMany({
+      where: { encounterId: input.encounterId },
+      select: { description: true, originalFilename: true, contentType: true },
+    });
+    if (attachments.length > 0) {
+      attachmentContext =
+        "\n\n## Patient Documents on File\n" +
+        attachments
+          .map((a) => `- ${a.description}: ${a.originalFilename} (${a.contentType})`)
+          .join("\n");
+    }
+  }
+
+  // 6. Assemble context
   const guidanceByTitle = Object.fromEntries(
     guidanceResources.map((r) => [r.title, r.content]),
   );
@@ -165,9 +182,9 @@ ${guidanceByTitle["ED Diversion Principles"] ?? "(Not available)"}
 
 ## ED Diversion Presenting Concerns
 
-${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}`;
+${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${attachmentContext}`;
 
-  // 6. Generate recommendation
+  // 7. Generate recommendation
   const result = await generateText({
     model: vertex(MODEL),
     system: SYSTEM_PROMPT,
