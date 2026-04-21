@@ -15,7 +15,7 @@ import { findModule } from "@/modules/registry";
 import { PostIntakeAccountPrompt } from "@/components/intake/post-intake-account-prompt";
 import { createEncounter } from "@/app/actions/encounter";
 
-const COMPLETION_MARKER = "[INTAKE_COMPLETE]";
+const COMPLETION_MARKER = "[COMPLETE]";
 
 type Props = {
   greetingName: string;
