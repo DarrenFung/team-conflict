@@ -46,3 +46,6 @@ frontend/.vercel
 
 # worktrees
 /.worktrees/
+
+.terraform
+terraform.tfvars
