@@ -8,7 +8,9 @@ import {
 } from "ai";
 import { ExternalAccountClient } from "google-auth-library";
 import { getVercelOidcToken } from "@vercel/oidc";
+import { currentUser } from "@clerk/nextjs/server";
 import { modules } from "@/modules/registry";
+import { prisma } from "@/lib/db";
 
 export const maxDuration = 30;
 
@@ -89,7 +91,27 @@ const tools = Object.fromEntries(
 );
 
 export async function POST(req: Request) {
-  const { messages }: { messages: UIMessage[] } = await req.json();
+  const {
+    messages,
+    encounterId,
+  }: { messages: UIMessage[]; encounterId?: string } = await req.json();
+
+  if (!encounterId) {
+    return new Response("encounterId is required", { status: 400 });
+  }
+
+  const user = await currentUser();
+  if (!user) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  const encounter = await prisma.encounter.findUnique({
+    where: { id: encounterId },
+    select: { userId: true },
+  });
+  if (!encounter || encounter.userId !== user.id) {
+    return new Response("Encounter not found", { status: 404 });
+  }
 
   const result = streamText({
     model: vertex("gemini-2.5-flash"),

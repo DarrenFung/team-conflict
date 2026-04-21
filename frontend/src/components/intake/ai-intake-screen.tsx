@@ -11,6 +11,7 @@ import { AlertCircle, CheckCircle2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { findModule } from "@/modules/registry";
+import { createEncounter } from "@/app/actions/encounter";
 
 const COMPLETION_MARKER = "[INTAKE_COMPLETE]";
 
@@ -202,20 +203,37 @@ function ChatScreen({
   initialReason: string;
 }) {
   const [input, setInput] = useState("");
+  const [encounterError, setEncounterError] = useState<Error | null>(null);
+  const encounterIdRef = useRef<string | null>(null);
   const seededRef = useRef(false);
 
   const { messages, sendMessage, status, error, addToolOutput } = useChat({
-    transport: new DefaultChatTransport({ api: "/api/chat" }),
+    transport: new DefaultChatTransport({
+      api: "/api/chat",
+      // Resolved fresh on every request — including auto-resumes after tool
+      // calls — so the encounterId always rides along once set.
+      body: () => ({ encounterId: encounterIdRef.current }),
+    }),
     // Auto-submit once all tool calls on the last assistant message have
     // outputs, so Gemini resumes immediately with the tool results in context.
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
   });
 
-  // Seed with the reason-for-visit as the first user message
+  // Record a new Encounter for this intake session, then seed with the
+  // reason-for-visit as the first user message. Seeding waits on the encounter
+  // so every /api/chat call has a valid encounterId.
   useEffect(() => {
     if (seededRef.current) return;
     seededRef.current = true;
-    sendMessage({ text: initialReason });
+    createEncounter()
+      .then(({ id }) => {
+        encounterIdRef.current = id;
+        sendMessage({ text: initialReason });
+      })
+      .catch((err) => {
+        console.error("Failed to create encounter", err);
+        setEncounterError(err instanceof Error ? err : new Error(String(err)));
+      });
   }, [initialReason, sendMessage]);
 
   const pending = useMemo(() => findPendingToolCall(messages), [messages]);
@@ -243,10 +261,10 @@ function ChatScreen({
     <main className="mx-auto flex min-h-svh w-full max-w-2xl flex-col px-4 py-8 sm:px-6 lg:py-12">
       <Header greetingName={greetingName} />
 
-      {error ? (
+      {error || encounterError ? (
         <div className="intake-glass flex items-start gap-3 rounded-2xl p-5 text-sm text-destructive">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
-          <p>{error.message || "Something went wrong."}</p>
+          <p>{(error ?? encounterError)?.message || "Something went wrong."}</p>
         </div>
       ) : (
         <div className="intake-glass flex flex-grow flex-col gap-4 rounded-2xl p-6 sm:p-8">
