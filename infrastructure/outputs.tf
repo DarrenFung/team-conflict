@@ -13,20 +13,14 @@ output "database_name" {
   value       = google_sql_database.main.name
 }
 
-output "app_service_account_email" {
-  description = "Email of the service account the app authenticates as. Postgres IAM username is this value with '.gserviceaccount.com' stripped."
-  value       = google_service_account.app.email
+output "app_user_name" {
+  description = "Postgres username the Next.js app connects as."
+  value       = google_sql_user.app.name
 }
 
-output "app_service_account_postgres_username" {
-  description = "Exact username to use when connecting to Postgres as the app SA."
-  value       = trimsuffix(google_service_account.app.email, ".gserviceaccount.com")
-}
-
-output "app_service_account_key" {
-  description = "JSON key for the app service account. Copy into Vercel env var GOOGLE_APPLICATION_CREDENTIALS_JSON, then discard. Rotate via `terraform taint google_service_account_key.app`."
-  value       = base64decode(google_service_account_key.app.private_key)
-  sensitive   = true
+output "app_user_password_secret_name" {
+  description = "Secret Manager secret holding the app user's password. Retrieve with: gcloud secrets versions access latest --secret=<this>"
+  value       = google_secret_manager_secret.app_user_password.secret_id
 }
 
 output "admin_password_secret_name" {

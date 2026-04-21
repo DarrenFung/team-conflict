@@ -45,8 +45,8 @@ variable "deletion_protection" {
   default     = true
 }
 
-variable "app_service_account_id" {
-  description = "Service account ID used by the Next.js app on Vercel. Must match ^[a-z]([-a-z0-9]{4,28}[a-z0-9])$"
+variable "app_user_name" {
+  description = "Postgres BUILT_IN user name the Next.js app connects as."
   type        = string
-  default     = "team-conflict-app"
+  default     = "app"
 }
