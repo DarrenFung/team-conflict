@@ -89,6 +89,7 @@ Use plain, patient-facing language. Be specific about costs, coverage, and next 
 export type RecommendInput = {
   symptoms: string;
   intakeSummary: string;
+  triageCategory?: string;
   location?: { lat: number; lon: number };
   encounterId?: string;
   userId: string;
