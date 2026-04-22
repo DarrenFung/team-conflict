@@ -269,13 +269,7 @@ function ActionRow({
 
 function RationaleBalloon({ text }: { text: string }) {
   return (
-    <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 mb-6 inline-flex max-w-[420px] items-start gap-2 rounded-[0_10px_10px_10px] border border-[rgba(24,95,165,0.15)] bg-[#E6F1FB] px-3.5 py-2.5 text-[12px] leading-[1.55] text-[#0e4a87]">
-      <span
-        aria-hidden
-        className="mt-0.5 flex size-[18px] shrink-0 items-center justify-center rounded-full bg-primary font-[family-name:var(--font-dm-serif)] text-[10px] text-white"
-      >
-        L
-      </span>
+    <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 mb-6 text-sm leading-relaxed text-muted-foreground">
       {text}
     </div>
   );
