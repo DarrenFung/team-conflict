@@ -55,5 +55,13 @@ export async function claimGuestIfPresent(): Promise<void> {
     }
   });
 
-  jar.delete(GUEST_COOKIE);
+  // Server Components can read cookies but can't mutate them. `/app/page.tsx`
+  // awaits this during render, so the delete must be best-effort — the stale
+  // cookie is harmless since its target row now has a clerkId (or is gone),
+  // and both getActiveUser and getOrCreateActiveUser ignore those.
+  try {
+    jar.delete(GUEST_COOKIE);
+  } catch {
+    // Called from a non-mutating context; skip cleanup.
+  }
 }
