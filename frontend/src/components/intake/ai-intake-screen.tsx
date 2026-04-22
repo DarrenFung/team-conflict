@@ -513,6 +513,7 @@ function ChatScreen({
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const reviewFetchedRef = useRef(false);
+  const [manuallyComplete, setManuallyComplete] = useState(false);
   const [intakePhase, setIntakePhase] = useState<"chat" | "personalize" | "recommendation">("chat");
 
   const encounterIdRef = useRef<string | null>(null);
@@ -551,8 +552,7 @@ function ChatScreen({
   const turns = useMemo(() => deriveTurns(messages), [messages]);
   const pending = useMemo(() => findPendingToolCall(messages), [messages]);
 
-  // Fetch review summary once when the intake completes.
-  const isComplete = useMemo(() => {
+  const markerComplete = useMemo(() => {
     const lastAssistant = [...messages]
       .reverse()
       .find((m) => m.role === "assistant");
@@ -565,6 +565,33 @@ function ChatScreen({
       .join("");
     return raw.includes(COMPLETION_MARKER);
   }, [messages, status]);
+
+  const isComplete = manuallyComplete || markerComplete;
+
+  // Fetch review summary once when the intake completes.
+  useEffect(() => {
+    if (!isComplete || reviewFetchedRef.current) return;
+    reviewFetchedRef.current = true;
+    setReviewLoading(true);
+    fetch("/api/intake/patient-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages,
+        moduleResults,
+        greetingName,
+        encounterId: encounterIdRef.current,
+        anonymousAccessToken: anonymousAccessTokenRef.current,
+      }),
+    })
+      .then((res) => res.json())
+      .then((data) => setReview(data as PatientReview))
+      .catch((err) =>
+        setReviewError(err instanceof Error ? err.message : "Failed to load review"),
+      )
+      .finally(() => setReviewLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isComplete]);
 
   const isStreaming = status === "submitted" || status === "streaming";
 
@@ -712,24 +739,22 @@ function ChatScreen({
               greetingName={greetingName}
               moduleResults={moduleResults}
             />
-            {(review || reviewError) && (
-              <button
-                type="button"
-                onClick={() => setIntakePhase("personalize")}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-7 py-3.5 text-[15px] font-medium text-white shadow-[0_3px_14px_rgba(24,95,165,0.22)] transition-all hover:bg-[#0e4a87] hover:-translate-y-px active:scale-[0.98]"
-              >
-                Continue to personalize
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
-                  <path
-                    d="M5 12h14M13 6l6 6-6 6"
-                    stroke="#fff"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setIntakePhase("personalize")}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-7 py-3.5 text-[15px] font-medium text-white shadow-[0_3px_14px_rgba(24,95,165,0.22)] transition-all hover:bg-[#0e4a87] hover:-translate-y-px active:scale-[0.98]"
+            >
+              Continue to personalize
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <path
+                  d="M5 12h14M13 6l6 6-6 6"
+                  stroke="#fff"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
             <PostIntakeAccountPrompt />
           </div>
         ) : pending && activeModule ? (
@@ -842,6 +867,18 @@ function ChatScreen({
             )}
           </div>
         ) : null}
+        {!isComplete && status === "ready" && !isStreaming && !pending && turns.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setManuallyComplete(true)}
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-7 py-3.5 text-[15px] font-medium text-white shadow-[0_3px_14px_rgba(24,95,165,0.22)] transition-all hover:bg-[#0e4a87] hover:-translate-y-px active:scale-[0.98]"
+          >
+            Continue to review
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        )}
       </IntakeStage>
 
       {/* Bottom nav — hidden on completion */}

@@ -4,6 +4,7 @@ import { getActiveUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { recommendationPayloadSchema } from "@/types/recommendation";
 import { RecommendationPage } from "@/components/recommendations/recommendation-page";
+import { EmergencyRecommendationPage } from "@/components/recommendations/emergency-recommendation-page";
 
 export const metadata: Metadata = {
   title: "AskLuke — Your Recommendation",
@@ -27,6 +28,7 @@ export default async function RecommendationRoute({
       userId: true,
       anonymousAccessToken: true,
       recommendationPayload: true,
+      encounterType: true,
     },
   });
 
@@ -59,6 +61,10 @@ export default async function RecommendationRoute({
       parsed.error.message,
     );
     notFound();
+  }
+
+  if (encounter.encounterType === "emerg") {
+    return <EmergencyRecommendationPage data={parsed.data} />;
   }
 
   return <RecommendationPage data={parsed.data} />;

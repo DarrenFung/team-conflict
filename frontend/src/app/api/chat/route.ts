@@ -209,6 +209,7 @@ export async function POST(req: Request) {
         const result = await recommend({
           symptoms,
           intakeSummary,
+          triageCategory,
           location:
             latitude != null && longitude != null
               ? { lat: latitude, lon: longitude }
