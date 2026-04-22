@@ -13,7 +13,6 @@ import {
   lastAssistantMessageIsCompleteWithToolCalls,
   type UIMessage,
 } from "ai";
-import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { upload } from "@vercel/blob/client";
@@ -31,6 +30,14 @@ import {
   IntakeStage,
 } from "@/components/intake/intake-journey-shell";
 import { deriveTurns } from "@/lib/intake/derive-turns";
+import {
+  IntakeReviewSummary,
+  IntakeReviewSummarySkeleton,
+} from "@/components/intake/intake-review-summary";
+import { PersonalizeScreen } from "@/components/intake/personalize-screen";
+import { DownloadPdfButton } from "@/components/intake/download-pdf-button";
+import { PostIntakeAccountPrompt } from "@/components/intake/post-intake-account-prompt";
+import type { PatientReview } from "@/app/api/intake/patient-review/route";
 
 const COMPLETION_MARKER = "[COMPLETE]";
 
@@ -447,9 +454,11 @@ function ReasonScreen({
 function ChatScreen({
   greetingName,
   initialReason,
+  onReset,
 }: {
   greetingName: string;
   initialReason: string;
+  onReset: () => void;
 }) {
   const [input, setInput] = useState("");
   const [encounterError, setEncounterError] = useState<Error | null>(null);
@@ -458,8 +467,11 @@ function ChatScreen({
   const [browseIdx, setBrowseIdx] = useState<number>(0);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
-  const router = useRouter();
-  const redirectedRef = useRef(false);
+  const [review, setReview] = useState<PatientReview | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const reviewFetchedRef = useRef(false);
+  const [intakePhase, setIntakePhase] = useState<"chat" | "personalize" | "recommendation">("chat");
 
   const encounterIdRef = useRef<string | null>(null);
   const anonymousAccessTokenRef = useRef<string | undefined>(undefined);
@@ -512,18 +524,6 @@ function ChatScreen({
     return raw.includes(COMPLETION_MARKER);
   }, [messages, status]);
 
-  // Redirect to recommendation page once intake completes
-  useEffect(() => {
-    if (!isComplete || redirectedRef.current) return;
-    redirectedRef.current = true;
-    const eid = encounterIdRef.current;
-    if (!eid) return;
-    const tokenParam = anonymousAccessTokenRef.current
-      ? `?token=${anonymousAccessTokenRef.current}`
-      : "";
-    router.push(`/recommendations/${eid}${tokenParam}`);
-  }, [isComplete, router]);
-
   const isStreaming = status === "submitted" || status === "streaming";
 
   // Always advance to the latest turn when a new question arrives.
@@ -553,7 +553,12 @@ function ChatScreen({
     : 15 + Math.min(65, (browseIdx / totalEstimated) * 65);
 
   // Journey step
-  const journeyStep = isComplete ? "review" : "followup";
+  const journeyStep =
+    intakePhase === "personalize" || intakePhase === "recommendation"
+      ? intakePhase
+      : isComplete
+        ? "review"
+        : "followup";
 
   async function handleSend() {
     const trimmed = input.trim();
@@ -622,17 +627,68 @@ function ChatScreen({
               <AlertCircle className="mt-0.5 size-4 shrink-0" />
               <p>{(error ?? encounterError)?.message || "Something went wrong."}</p>
             </div>
+            <button
+              onClick={onReset}
+              className="mt-3 rounded-lg border border-destructive/30 bg-white px-4 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
+            >
+              Retry
+            </button>
           </div>
+        ) : isComplete && intakePhase === "personalize" ? (
+          // ── Personalize ──────────────────────────────────────────────────
+          <PersonalizeScreen
+            encounterId={encounterId}
+            anonymousAccessToken={anonymousAccessTokenRef.current}
+            onComplete={() => setIntakePhase("recommendation")}
+          />
         ) : isComplete ? (
           // ── Redirecting to recommendation page ─────────────────────────
           <div
             key="complete"
             className="flex flex-col items-center gap-4 py-16"
           >
-            <Loader2 className="size-8 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">
-              Preparing your recommendation&hellip;
-            </p>
+            {!review && !reviewError ? (
+              <IntakeReviewSummarySkeleton />
+            ) : reviewError ? (
+              <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-5 text-sm text-destructive">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <p>{reviewError}</p>
+                </div>
+                <button
+                  onClick={onReset}
+                  className="mt-3 rounded-lg border border-destructive/30 bg-white px-4 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/10 transition-colors"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : review ? (
+              <IntakeReviewSummary review={review} />
+            ) : null}
+            <DownloadPdfButton
+              messages={messages}
+              greetingName={greetingName}
+              moduleResults={moduleResults}
+            />
+            {(review || reviewError) && (
+              <button
+                type="button"
+                onClick={() => setIntakePhase("personalize")}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-7 py-3.5 text-[15px] font-medium text-white shadow-[0_3px_14px_rgba(24,95,165,0.22)] transition-all hover:bg-[#0e4a87] hover:-translate-y-px active:scale-[0.98]"
+              >
+                Continue to personalize
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <path
+                    d="M5 12h14M13 6l6 6-6 6"
+                    stroke="#fff"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </button>
+            )}
+            <PostIntakeAccountPrompt />
           </div>
         ) : pending && activeModule ? (
           // ── Module stage ─────────────────────────────────────────────────
@@ -773,5 +829,11 @@ export function AiIntakeScreen({ greetingName, initialReason }: Props) {
     );
   }
 
-  return <ChatScreen greetingName={greetingName} initialReason={reason} />;
+  return (
+    <ChatScreen
+      greetingName={greetingName}
+      initialReason={reason}
+      onReset={() => setStep("reason")}
+    />
+  );
 }

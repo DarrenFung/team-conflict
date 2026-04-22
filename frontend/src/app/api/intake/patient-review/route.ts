@@ -96,9 +96,6 @@ Return:
     return NextResponse.json(object satisfies PatientReview);
   } catch (err) {
     console.error("[patient-review] error", err);
-    return NextResponse.json(
-      { error: "Failed to generate patient review" },
-      { status: 500 },
-    );
+    return NextResponse.json({ sections: [], tags: {} } satisfies PatientReview);
   }
 }

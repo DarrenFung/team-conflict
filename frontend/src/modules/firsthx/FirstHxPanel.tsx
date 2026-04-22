@@ -198,6 +198,10 @@ export function FirstHxPanel({
     const built = buildAnswerAndDisplay(content);
     if (!built) return;
 
+    // #region agent log
+    fetch('http://127.0.0.1:7822/ingest/20344ad4-50c8-4fa2-9666-6aa12d90b717',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'3bc374'},body:JSON.stringify({sessionId:'3bc374',runId:'post-fix',hypothesisId:'H-A,H-B,H-C',location:'FirstHxPanel.tsx:handleSubmit',message:'submit called',data:{contentId:content.id,contentType:content.type,intakeStatus:state.intakeStatus,inputRequired:content.inputRequired,answer:built.answer},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+
     startTransition(async () => {
       try {
         setOpError(null);
