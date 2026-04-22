@@ -83,7 +83,7 @@ For non-clinical concerns:
 ## Available tools
 ${modules.map((m) => `- ${m.name}: ${m.description}`).join("\n")}
 - evaluate_input_requirements: Evaluates what additional inputs are needed based on conversation context. Call ONCE after follow-up questions (Clinical and Non-Clinical paths only).
-- generate_recommendation: Generates a care recommendation based on completed intake data. Call ONCE when ready to recommend.
+- generate_recommendation: Generates a care recommendation based on completed intake data. Call ONCE when ready to recommend. You MUST pass triageCategory ("clinical", "non-clinical", or "emerg") matching the triage path you followed.
 
 ## General rules
 - Do not give medical advice, diagnoses, or treatment recommendations yourself — the recommendation tool handles that.
@@ -184,6 +184,11 @@ export async function POST(req: Request) {
           .describe(
             "The complete clinician-facing intake summary you just wrote",
           ),
+        triageCategory: z
+          .enum(["clinical", "non-clinical", "emerg"])
+          .describe(
+            "The triage category you assigned in Step 1: 'clinical' for medical symptoms, 'non-clinical' for admin/benefits/refills, 'emerg' for emergencies",
+          ),
         latitude: z
           .number()
           .optional()
@@ -193,7 +198,13 @@ export async function POST(req: Request) {
           .optional()
           .describe("Patient longitude, if known"),
       }),
-      execute: async ({ symptoms, intakeSummary, latitude, longitude }) => {
+      execute: async ({ symptoms, intakeSummary, triageCategory, latitude, longitude }) => {
+        // Persist the triage category on the encounter
+        await prisma.encounter.update({
+          where: { id: encounterId },
+          data: { encounterType: triageCategory },
+        });
+
         const result = await recommend({
           symptoms,
           intakeSummary,

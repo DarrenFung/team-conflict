@@ -29,6 +29,7 @@ model Encounter {
   id                     String        @id @default(cuid())
   userId                 String?
   anonymousAccessToken   String?       @unique
+  encounterType          String?       // "clinical" | "non-clinical" | "emerg" — set after recommendation
   createdAt              DateTime      @default(now())
   user                   User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
   attachments            Attachment[]
