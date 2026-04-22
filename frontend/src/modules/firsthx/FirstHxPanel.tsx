@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { AlertCircle, ChevronLeft } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   goBack as goBackAction,
@@ -11,6 +10,7 @@ import {
   type AnswerData,
 } from "@/app/actions/firsthx";
 import type { IntakeContent, IntakeOption, IntakeState } from "@/lib/firsthx";
+import { useIntakeStepReporter } from "@/components/intake/intake-journey-shell";
 import type { ModuleComponentProps } from "../types";
 import type { FirstHxArgs, FirstHxResult, FirstHxTurn } from "./index";
 
@@ -39,6 +39,25 @@ function buildSelectedOptions(
     .map(({ id, displayText, originalText }) => ({ id, displayText, originalText }));
 }
 
+// ── Rationale balloon (helper text) ──────────────────────────────────────────
+
+function RationaleBalloon({ text }: { text: string }) {
+  return (
+    <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 mb-6 inline-flex max-w-[420px] items-start gap-2 rounded-[0_10px_10px_10px] border border-[rgba(24,95,165,0.15)] bg-[#E6F1FB] px-3.5 py-2.5 text-[12px] leading-[1.55] text-[#0e4a87]">
+      {/* "L" circle — keeps the AskLuke brand subtly */}
+      <span
+        aria-hidden
+        className="mt-0.5 flex size-[18px] shrink-0 items-center justify-center rounded-full bg-primary font-[family-name:var(--font-dm-serif)] text-[10px] text-white"
+      >
+        L
+      </span>
+      {text}
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export function FirstHxPanel({
   onComplete,
 }: ModuleComponentProps<FirstHxArgs, FirstHxResult>) {
@@ -52,6 +71,9 @@ export function FirstHxPanel({
   const [numberValue, setNumberValue] = useState("");
   const [selectedUnit, setSelectedUnit] = useState("");
   const [pending, startTransition] = useTransition();
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const stepReporter = useIntakeStepReporter();
 
   // Kick off the firstHx session on mount
   useEffect(() => {
@@ -73,12 +95,18 @@ export function FirstHxPanel({
   const content = state?.content;
   const contentId = content?.id;
 
+  // Reset input state when question changes
   useEffect(() => {
     setSelectedIds([]);
     setTextValue("");
     setNumberValue("");
     setSelectedUnit("");
-  }, [contentId]);
+    // Refocus textarea for free-text questions
+    if (content && isFreeTextType(content.type)) {
+      const t = setTimeout(() => textareaRef.current?.focus(), 60);
+      return () => clearTimeout(t);
+    }
+  }, [contentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (content && isNumberType(content.type) && !selectedUnit && content.units?.[0]) {
@@ -86,9 +114,18 @@ export function FirstHxPanel({
     }
   }, [content, selectedUnit]);
 
+  // Report current step progress to any parent shell
+  useEffect(() => {
+    if (!stepReporter) return;
+    // total is unknown from the API; use turns + 1 as a minimum
+    stepReporter.reportStep(turns.length + 1, Math.max(turns.length + 1, 5));
+  }, [turns.length, stepReporter]);
+
+  // ── Error / loading ─────────────────────────────────────────────────────
+
   if (loadError) {
     return (
-      <div className="flex items-start gap-2 border-t border-white/40 pt-4 text-sm text-destructive">
+      <div className="flex items-start gap-2 text-sm text-destructive">
         <AlertCircle className="mt-0.5 size-4 shrink-0" />
         <p>{loadError}</p>
       </div>
@@ -97,11 +134,13 @@ export function FirstHxPanel({
 
   if (!state || !content) {
     return (
-      <div className="border-t border-white/40 px-1 pt-4 text-sm text-muted-foreground">
+      <div className="text-sm text-muted-foreground animate-pulse">
         Starting structured symptom capture…
       </div>
     );
   }
+
+  // ── Derived state ───────────────────────────────────────────────────────
 
   const type = content.type;
   const options = content.options ?? [];
@@ -118,17 +157,25 @@ export function FirstHxPanel({
     canSubmit = selectedIds.length > 0 || !content.inputRequired;
   }
 
+  const canSkip = !content.inputRequired && !isInfoType(type);
+
+  // ── Interaction handlers ────────────────────────────────────────────────
+
   function toggle(optionId: number, deselectOthers?: boolean) {
     if (isMulti && !deselectOthers) {
       setSelectedIds((prev) =>
-        prev.includes(optionId) ? prev.filter((id) => id !== optionId) : [...prev, optionId],
+        prev.includes(optionId)
+          ? prev.filter((id) => id !== optionId)
+          : [...prev, optionId],
       );
     } else {
       setSelectedIds([optionId]);
     }
   }
 
-  function buildAnswerAndDisplay(c: IntakeContent): { answer: AnswerData; display: string } | null {
+  function buildAnswerAndDisplay(
+    c: IntakeContent,
+  ): { answer: AnswerData; display: string } | null {
     const t = c.type;
     if (isInfoType(t)) return { answer: { kind: "options", options: [] }, display: "Continued" };
     if (isFreeTextType(t)) {
@@ -170,6 +217,30 @@ export function FirstHxPanel({
     });
   }
 
+  function handleSkip() {
+    if (!state || !content) return;
+    startTransition(async () => {
+      try {
+        setOpError(null);
+        const next = await submitAnswer(state.mkey, content.id, {
+          kind: "options",
+          options: [],
+        });
+        const turn: FirstHxTurn = { question: content.title, display: "—" };
+        const nextTurns = [...turns, turn];
+        setTurns(nextTurns);
+
+        if (next.intakeStatus === "completed") {
+          onComplete({ turns: nextTurns });
+        } else {
+          setState(next);
+        }
+      } catch (err) {
+        setOpError(err instanceof Error ? err.message : "Failed to skip");
+      }
+    });
+  }
+
   function handleBack() {
     if (!state || !content?.backAllowed) return;
     startTransition(async () => {
@@ -184,49 +255,77 @@ export function FirstHxPanel({
     });
   }
 
-  return (
-    <div className="flex flex-col gap-4 border-t border-white/40 pt-4">
-      <div>
-        <p className="text-[11px] font-semibold uppercase tracking-widest text-primary/70">
-          firstHx structured capture
-        </p>
-        {content.title && (
-          <h3 className="mt-1 text-[16px] font-semibold leading-snug text-foreground">
-            {content.title}
-          </h3>
-        )}
-        {content.helperText && (
-          <p className="mt-1 text-sm text-muted-foreground">{content.helperText}</p>
-        )}
-        {isMulti && (
-          <p className="mt-1 text-xs text-muted-foreground/70">Select all that apply</p>
-        )}
-      </div>
+  // ── Render ──────────────────────────────────────────────────────────────
 
+  return (
+    <div
+      key={contentId}
+      className="animate-in fade-in-0 slide-in-from-bottom-4 duration-300 flex flex-col gap-0"
+    >
+      {/* Question number */}
+      <p className="mb-4 flex items-center gap-1.5 text-[13px] font-medium text-primary opacity-80">
+        Question {turns.length + 1}
+      </p>
+
+      {/* Question title in large serif */}
+      {content.title && (
+        <h2 className="mb-6 font-[family-name:var(--font-dm-serif)] text-[clamp(22px,3.8vw,32px)] leading-[1.3] tracking-[-0.4px] text-[#0E1420]">
+          {content.title}
+        </h2>
+      )}
+
+      {/* Helper text as rationale balloon */}
+      {content.helperText && <RationaleBalloon text={content.helperText} />}
+
+      {/* Multi-select hint */}
+      {isMulti && (
+        <p className="mb-4 text-xs text-muted-foreground">Select all that apply</p>
+      )}
+
+      {/* HTML content block */}
       {content.html && (
         <div
-          className="prose prose-sm max-w-none text-foreground"
+          className="prose prose-sm mb-4 max-w-none text-foreground"
           dangerouslySetInnerHTML={{ __html: content.html }}
         />
       )}
 
+      {/* Operation error */}
       {opError && (
-        <div className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
+        <div className="mb-4 flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-sm text-destructive">
           <AlertCircle className="mt-0.5 size-4 shrink-0" />
           <p>{opError}</p>
         </div>
       )}
 
+      {/* ── Answer inputs ─────────────────────────────────────────────── */}
+
       {isFreeTextType(type) ? (
+        // Underline textarea matching the HTML mock style
         <textarea
+          ref={textareaRef}
           value={textValue}
-          onChange={(e) => setTextValue(e.target.value)}
+          rows={1}
+          onChange={(e) => {
+            setTextValue(e.target.value);
+            const el = e.target;
+            el.style.height = "auto";
+            el.style.height = Math.min(el.scrollHeight, 200) + "px";
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && canSubmit) {
+              e.preventDefault();
+              handleSubmit();
+            }
+          }}
           disabled={pending}
-          placeholder={content.inputRequired ? "Type your answer…" : "Type your answer (optional)…"}
-          className="min-h-[100px] w-full resize-none rounded-xl border border-white/60 bg-white/30 px-4 py-3 text-[15px] leading-relaxed text-foreground placeholder:text-foreground/35 focus:border-primary/40 focus:bg-white/50 focus:outline-none"
+          placeholder={
+            content.inputRequired ? "Type your answer…" : "Type your answer (optional)…"
+          }
+          className="block w-full resize-none overflow-hidden border-0 border-b-2 border-[rgba(24,95,165,0.2)] bg-transparent pb-2.5 pt-2.5 text-[18px] font-light leading-relaxed text-foreground placeholder:text-[#C0C8D2] focus:border-primary focus:outline-none transition-colors duration-200 disabled:opacity-60"
         />
       ) : isNumberType(type) ? (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <input
             type="number"
             value={numberValue}
@@ -234,14 +333,14 @@ export function FirstHxPanel({
             onChange={(e) => setNumberValue(e.target.value.replace(/-/g, ""))}
             disabled={pending}
             placeholder="Enter a number"
-            className="w-full rounded-xl border border-white/60 bg-white/30 px-4 py-3 text-[15px] text-foreground placeholder:text-foreground/35 focus:border-primary/40 focus:bg-white/50 focus:outline-none"
+            className="w-full border-0 border-b-2 border-[rgba(24,95,165,0.2)] bg-transparent pb-2.5 pt-2.5 text-[18px] font-light text-foreground placeholder:text-[#C0C8D2] focus:border-primary focus:outline-none transition-colors duration-200"
           />
           {content.units && content.units.length > 0 && (
             <select
               value={selectedUnit}
               onChange={(e) => setSelectedUnit(e.target.value)}
               disabled={pending}
-              className="rounded-xl border border-white/60 bg-white/30 px-4 py-3 text-[15px] text-foreground focus:border-primary/40 focus:bg-white/50 focus:outline-none sm:w-40"
+              className="rounded-lg border border-[rgba(24,95,165,0.22)] bg-[#F7F9FC] px-3 py-2 text-[14px] text-foreground focus:border-primary focus:outline-none sm:w-36"
             >
               {content.units.map((u) => (
                 <option key={u} value={u}>
@@ -261,7 +360,13 @@ export function FirstHxPanel({
                 type="button"
                 onClick={() => toggle(option.id, option.deselectOtherAnswers)}
                 disabled={pending}
-                className={cn("intake-option", isSelected && "intake-option-selected")}
+                className={cn(
+                  "flex flex-col items-start rounded-xl border px-4 py-3 text-left text-[15px] transition-all",
+                  isSelected
+                    ? "border-primary bg-[#E6F1FB] text-primary shadow-sm"
+                    : "border-[rgba(24,95,165,0.18)] bg-white text-foreground hover:border-primary/40 hover:bg-[#F7F9FC]",
+                  "disabled:pointer-events-none disabled:opacity-60",
+                )}
               >
                 <span className="flex items-center gap-3">
                   <span
@@ -299,28 +404,49 @@ export function FirstHxPanel({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-3 pt-1">
+      {/* ── Action row ────────────────────────────────────────────────── */}
+      <div className="mt-8 flex items-center gap-4">
         {content.backAllowed && (
-          <Button
+          <button
             type="button"
-            variant="outline"
-            size="lg"
             onClick={handleBack}
             disabled={pending}
+            className="rounded-lg border border-[rgba(24,95,165,0.22)] bg-white px-5 py-3 text-[14px] font-medium text-muted-foreground transition-colors hover:bg-[#F7F9FC] hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
           >
-            <ChevronLeft className="mr-1 size-4" />
-            Back
-          </Button>
+            ← Back
+          </button>
         )}
-        <Button
+
+        <button
           type="button"
-          size="lg"
           onClick={handleSubmit}
           disabled={pending || !canSubmit}
-          className="ml-auto"
+          className="flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_14px_rgba(24,95,165,0.22)] transition-all hover:bg-[#0e4a87] hover:-translate-y-px disabled:pointer-events-none disabled:opacity-40"
         >
-          {pending ? "Loading…" : "Continue"}
-        </Button>
+          {pending ? "Loading…" : isInfoType(type) ? "Continue" : "OK"}
+          {!pending && (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M5 12h14M13 6l6 6-6 6"
+                stroke="#fff"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </button>
+
+        {canSkip && (
+          <button
+            type="button"
+            onClick={handleSkip}
+            disabled={pending}
+            className="bg-transparent border-none text-[13px] text-muted-foreground px-1 py-1 transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+          >
+            Skip
+          </button>
+        )}
       </div>
     </div>
   );

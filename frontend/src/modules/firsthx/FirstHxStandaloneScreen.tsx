@@ -1,8 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { CheckCircle2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { AskLukeTopNav } from "@/components/layout/ask-luke-top-nav";
+import {
+  IntakeJourneyBar,
+  IntakeProgressBar,
+  IntakeBottomNav,
+  IntakeStage,
+  IntakeStepReporterContext,
+} from "@/components/intake/intake-journey-shell";
 import { FirstHxPanel } from "./FirstHxPanel";
 import type { FirstHxResult, FirstHxTurn } from "./index";
 
@@ -10,7 +17,12 @@ type Props = {
   greetingName: string;
 };
 
+import { useRef } from "react";
+import { Button } from "@/components/ui/button";
+
 type Step = "reason" | "questions" | "complete";
+
+// ── PageHeader (original FirstHx brand) ───────────────────────────────────────
 
 function FirstHxBadge() {
   return (
@@ -43,6 +55,8 @@ function PageHeader({ greetingName }: { greetingName: string }) {
     </header>
   );
 }
+
+// ── ReasonScreen — original intake-glass look (no journey bar) ────────────────
 
 function ReasonScreen({
   greetingName,
@@ -95,68 +109,128 @@ function ReasonScreen({
   );
 }
 
+// ── CompletionScreen ──────────────────────────────────────────────────────────
+
 function CompletionScreen({
-  greetingName,
   reason,
   turns,
 }: {
-  greetingName: string;
   reason: string;
   turns: FirstHxTurn[];
 }) {
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-2xl flex-col px-4 py-8 sm:px-6 lg:py-12">
-      <PageHeader greetingName={greetingName} />
-      <div className="intake-glass flex flex-col gap-6 rounded-2xl p-6 sm:p-8">
-        <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:items-start sm:text-left">
-          <CheckCircle2 className="mx-auto size-10 shrink-0 text-primary sm:mx-0" />
-          <div className="min-w-0 flex-1">
-            <p className="text-base font-semibold text-foreground">Assessment Complete</p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {reason || turns.length > 0
-                ? "Thank you for completing the intake assessment. Here is what you shared with us."
-                : "Thank you for completing the intake assessment."}
+    <div className="relative min-h-svh bg-white">
+      <AskLukeTopNav />
+      <div className="fixed inset-x-0 top-[60px] z-50 border-b border-[rgba(24,95,165,0.12)] bg-white/95 pt-2 backdrop-blur-[10px]">
+        <IntakeJourneyBar active="review" />
+      </div>
+      <IntakeProgressBar percent={90} />
+
+      <IntakeStage>
+        <div className="animate-in fade-in-0 slide-in-from-bottom-4 duration-300 flex flex-col gap-6">
+          <div className="flex flex-col items-center gap-2 text-center">
+            <CheckCircle2 className="size-9 text-primary drop-shadow-[0_2px_8px_rgba(24,95,165,0.2)]" />
+            <p className="font-[family-name:var(--font-dm-serif)] text-lg text-foreground">
+              Assessment complete
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Thank you for completing your intake.
             </p>
           </div>
-        </div>
 
-        {(reason || turns.length > 0) && (
-          <div className="space-y-5 border-t border-black/8 pt-6 text-left">
-            {reason ? (
-              <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  What&apos;s going on today
-                </h3>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                  {reason}
-                </p>
-              </section>
-            ) : null}
-            {turns.length > 0 ? (
-              <section>
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Your responses
-                </h3>
-                <ul className="mt-3 space-y-4">
-                  {turns.map((turn, i) => (
-                    <li key={`${turn.question}-${i}`}>
-                      <p className="text-[13px] font-medium text-foreground/90">
-                        {turn.question}
-                      </p>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
-                        {turn.display}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              </section>
-            ) : null}
-          </div>
-        )}
-      </div>
-    </main>
+          {(reason || turns.length > 0) && (
+            <div className="space-y-5 border-t border-[rgba(24,95,165,0.12)] pt-6 text-left">
+              {reason && (
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    What&apos;s going on today
+                  </h3>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground">
+                    {reason}
+                  </p>
+                </section>
+              )}
+              {turns.length > 0 && (
+                <section>
+                  <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Your responses
+                  </h3>
+                  <ul className="mt-3 space-y-4">
+                    {turns.map((turn, i) => (
+                      <li key={`${turn.question}-${i}`}>
+                        <p className="text-[13px] font-medium text-foreground/90">
+                          {turn.question}
+                        </p>
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">
+                          {turn.display}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              )}
+            </div>
+          )}
+        </div>
+      </IntakeStage>
+    </div>
   );
 }
+
+// ── QuestionsScreen ───────────────────────────────────────────────────────────
+
+function QuestionsScreen({
+  reason,
+  onComplete,
+}: {
+  reason: string;
+  onComplete: (result: FirstHxResult) => void;
+}) {
+  const [stepCurrent, setStepCurrent] = useState(1);
+  const [stepTotal, setStepTotal] = useState(1);
+
+  return (
+    <IntakeStepReporterContext.Provider
+      value={{
+        reportStep: (current, total) => {
+          setStepCurrent(current);
+          setStepTotal(total);
+        },
+      }}
+    >
+      <div className="relative min-h-svh bg-white">
+        <AskLukeTopNav />
+        <div className="fixed inset-x-0 top-[60px] z-50 border-b border-[rgba(24,95,165,0.12)] bg-white/95 pt-2 backdrop-blur-[10px]">
+          <IntakeJourneyBar active="followup" />
+        </div>
+        <IntakeProgressBar
+          percent={15 + Math.min(65, (stepCurrent / Math.max(stepTotal, 1)) * 65)}
+        />
+
+        <IntakeStage>
+          <div className="animate-in fade-in-0 slide-in-from-bottom-4 duration-300">
+            <FirstHxPanel
+              args={{ symptomHint: reason }}
+              encounterId={null}
+              onComplete={onComplete}
+            />
+          </div>
+        </IntakeStage>
+
+        <IntakeBottomNav
+          current={stepCurrent}
+          total={stepTotal}
+          onPrev={() => {}}
+          onNext={() => {}}
+          prevDisabled
+          nextDisabled
+        />
+      </div>
+    </IntakeStepReporterContext.Provider>
+  );
+}
+
+// ── Root export ───────────────────────────────────────────────────────────────
 
 export function FirstHxStandaloneScreen({ greetingName }: Props) {
   const [step, setStep] = useState<Step>("reason");
@@ -176,24 +250,16 @@ export function FirstHxStandaloneScreen({ greetingName }: Props) {
   }
 
   if (step === "complete" && result) {
-    return (
-      <CompletionScreen greetingName={greetingName} reason={reason} turns={result.turns} />
-    );
+    return <CompletionScreen reason={reason} turns={result.turns} />;
   }
 
   return (
-    <main className="mx-auto flex min-h-svh w-full max-w-2xl flex-col px-4 py-8 sm:px-6 lg:py-12">
-      <PageHeader greetingName={greetingName} />
-      <div className="intake-glass flex flex-grow flex-col gap-2 rounded-2xl p-6 sm:p-8">
-        <FirstHxPanel
-          args={{ symptomHint: reason }}
-          encounterId={null}
-          onComplete={(r) => {
-            setResult(r);
-            setStep("complete");
-          }}
-        />
-      </div>
-    </main>
+    <QuestionsScreen
+      reason={reason}
+      onComplete={(r) => {
+        setResult(r);
+        setStep("complete");
+      }}
+    />
   );
 }
