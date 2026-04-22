@@ -1,7 +1,7 @@
 import "server-only";
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { getDownloadUrl } from "@vercel/blob";
+import { get } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { vertex } from "@/lib/vertex";
 import { mapsTool } from "@/lib/maps";
@@ -69,6 +69,7 @@ export type RecommendInput = {
   intakeSummary: string;
   location?: { lat: number; lon: number };
   encounterId?: string;
+  userId: string;
 };
 
 export async function recommend(input: RecommendInput): Promise<string> {
@@ -128,13 +129,29 @@ ${titleList}`,
         })
       : [];
 
-  // 5. Load patient documents (if encounter is known)
+  // 5. Load patient documents — pull from the current encounter AND any
+  //    prior uploads for this user (e.g. benefits booklet from a previous session).
+  //    Deduplicate by description, preferring the most recent upload.
   let attachmentContext = "";
   let fileParts: Array<{ type: "file"; data: Uint8Array; mediaType: string }> = [];
-  if (input.encounterId) {
-    const attachments = await prisma.attachment.findMany({
-      where: { encounterId: input.encounterId },
-      select: { url: true, description: true, originalFilename: true, contentType: true },
+  {
+    const allAttachments = await prisma.attachment.findMany({
+      where: {
+        OR: [
+          ...(input.encounterId ? [{ encounterId: input.encounterId }] : []),
+          { userId: input.userId },
+        ],
+      },
+      select: { url: true, description: true, originalFilename: true, contentType: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    });
+
+    // Deduplicate by description — keep the most recent (already sorted desc)
+    const seen = new Set<string>();
+    const attachments = allAttachments.filter((a) => {
+      if (seen.has(a.description)) return false;
+      seen.add(a.description);
+      return true;
     });
     if (attachments.length > 0) {
       attachmentContext =
@@ -145,17 +162,31 @@ ${titleList}`,
         "\n\nThe actual file contents are attached to this message. Review them as part of your assessment.";
 
       // Download file contents from Vercel Blob for inline delivery to Gemini
-      fileParts = await Promise.all(
+      const downloadResults = await Promise.all(
         attachments.map(async (a) => {
-          const url = await getDownloadUrl(a.url);
-          const res = await fetch(url);
-          return {
-            type: "file" as const,
-            data: new Uint8Array(await res.arrayBuffer()),
-            mediaType: a.contentType,
-          };
+          try {
+            const result = await get(a.url, { access: "private" });
+            if (!result) {
+              console.warn(`[recommend] Blob not found for ${a.originalFilename}`);
+              return null;
+            }
+            const data = new Uint8Array(await new Response(result.stream).arrayBuffer());
+            if (data.byteLength === 0) {
+              console.warn(`[recommend] Skipping empty attachment: ${a.originalFilename}`);
+              return null;
+            }
+            return {
+              type: "file" as const,
+              data,
+              mediaType: result.blob.contentType || a.contentType,
+            };
+          } catch (err) {
+            console.warn(`[recommend] Failed to download attachment ${a.originalFilename}:`, err);
+            return null;
+          }
         }),
       );
+      fileParts = downloadResults.filter((p): p is NonNullable<typeof p> => p !== null);
     }
   }
 
@@ -200,23 +231,47 @@ ${guidanceByTitle["ED Diversion Principles"] ?? "(Not available)"}
 
 ${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${attachmentContext}`;
 
-  // 7. Generate recommendation
-  const result = await generateText({
+  // 7. Generate recommendation — try with attachments, then progressively
+  //    drop files that Gemini can't process.
+  const generateOptions = {
     model: vertex(MODEL),
     system: SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: userPrompt },
-          ...fileParts,
-        ],
-      },
-    ],
     ...(input.location
       ? { tools: { find_nearby_healthcare_provider: mapsTool }, maxSteps: 5 }
       : {}),
-  });
+  };
 
-  return result.text;
+  let remainingParts = [...fileParts];
+
+  while (true) {
+    try {
+      const note = remainingParts.length < fileParts.length && remainingParts.length === 0
+        ? "\n\n(Note: The patient uploaded documents but they could not be processed. Base your recommendation on the intake summary and text context only.)"
+        : "";
+      const result = await generateText({
+        ...generateOptions,
+        messages: [
+          {
+            role: "user" as const,
+            content: [
+              { type: "text" as const, text: userPrompt + note },
+              ...remainingParts,
+            ],
+          },
+        ],
+      });
+      return result.text;
+    } catch (err) {
+      if (remainingParts.length > 0) {
+        // Drop the last file and retry — isolates which file Gemini can't process
+        const dropped = remainingParts.pop()!;
+        console.warn(
+          `[recommend] Generation failed, dropping file (${dropped.mediaType}, ${dropped.data.byteLength} bytes). ${remainingParts.length} files remaining. Error:`,
+          err instanceof Error ? err.message : err,
+        );
+        continue;
+      }
+      throw err;
+    }
+  }
 }
