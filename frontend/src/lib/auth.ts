@@ -11,11 +11,15 @@ const GUEST_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export type ActiveUser = { id: string; isGuest: boolean };
 
-// Returns the current user for a request — either the Clerk-authed user
-// (upserted if missing) or a guest keyed by an HttpOnly cookie. Use this
-// instead of Clerk's `currentUser()` whenever the call site needs to write
-// encounters/attachments.
-export async function getOrCreateActiveUser(): Promise<ActiveUser> {
+// Resolve the current user without creating a new guest row. Callable from
+// Server Components and other read-only contexts where `cookies().set()`
+// is disallowed by Next.js. Returns null for first-time anonymous
+// visitors. For the Clerk branch a DB upsert still happens so downstream
+// ownership checks work — Server Components are allowed to write to the
+// DB, just not cookies.
+async function resolveActiveUser(options: {
+  createGuest: boolean;
+}): Promise<ActiveUser | null> {
   const { userId: clerkId } = await auth();
 
   if (clerkId) {
@@ -67,6 +71,8 @@ export async function getOrCreateActiveUser(): Promise<ActiveUser> {
     }
   }
 
+  if (!options.createGuest) return null;
+
   const fresh = await prisma.user.create({ data: {}, select: { id: true } });
   jar.set(GUEST_COOKIE, fresh.id, {
     httpOnly: true,
@@ -76,4 +82,24 @@ export async function getOrCreateActiveUser(): Promise<ActiveUser> {
     path: "/",
   });
   return { id: fresh.id, isGuest: true };
+}
+
+// Returns the current user for a request — either the Clerk-authed user
+// (upserted if missing) or a guest keyed by an HttpOnly cookie. Use this
+// from Server Actions and Route Handlers where it's OK to mint a new
+// guest (which sets a cookie).
+export async function getOrCreateActiveUser(): Promise<ActiveUser> {
+  const user = await resolveActiveUser({ createGuest: true });
+  // createGuest: true always resolves to a user (Clerk, existing guest, or
+  // a freshly minted guest). Narrow the type for callers.
+  if (!user) throw new Error("Failed to resolve active user");
+  return user;
+}
+
+// Read-only variant for Server Components / other render-time contexts.
+// Returns null if the visitor has no Clerk session and no existing guest
+// cookie — call sites should fall back to their own auth path (e.g. an
+// anonymous access token).
+export async function getActiveUser(): Promise<ActiveUser | null> {
+  return resolveActiveUser({ createGuest: false });
 }

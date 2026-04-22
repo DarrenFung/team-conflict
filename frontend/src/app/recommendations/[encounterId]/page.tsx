@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { getOrCreateActiveUser } from "@/lib/auth";
+import { getActiveUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { recommendationPayloadSchema } from "@/types/recommendation";
 import { RecommendationPage } from "@/components/recommendations/recommendation-page";
@@ -35,9 +35,12 @@ export default async function RecommendationRoute({
   }
 
   // Authorize: either the logged-in user owns this encounter, or the
-  // anonymous access token matches (passed as ?token= query param).
-  const user = await getOrCreateActiveUser();
-  const isOwner = encounter.userId === user.id;
+  // anonymous access token matches (passed as ?token= query param). Use the
+  // read-only resolver since Server Components can't set cookies and an
+  // unknown viewer here should flow through the token path, not spawn a
+  // fresh guest row.
+  const user = await getActiveUser();
+  const isOwner = user != null && encounter.userId === user.id;
   const hasValidToken =
     encounter.anonymousAccessToken != null &&
     token === encounter.anonymousAccessToken;
