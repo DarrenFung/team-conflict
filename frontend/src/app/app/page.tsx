@@ -13,7 +13,7 @@ function resolveProvider(override: string | undefined): IntakeProvider {
 export default async function AppPage({
   searchParams,
 }: {
-  searchParams: Promise<{ intake?: string }>;
+  searchParams: Promise<{ intake?: string; reason?: string }>;
 }) {
   // If the user just signed up/in after a guest session, attach their guest
   // encounters and attachments to the Clerk account before rendering.
@@ -21,12 +21,13 @@ export default async function AppPage({
 
   const user = await currentUser();
   const greetingName = user?.firstName ?? "there";
-  const { intake } = await searchParams;
+  const { intake, reason } = await searchParams;
   const provider = resolveProvider(intake);
+  const initialReason = reason ? decodeURIComponent(reason) : undefined;
 
   if (provider === "firsthx") {
     return <FirstHxStandaloneScreen greetingName={greetingName} />;
   }
 
-  return <AiIntakeScreen greetingName={greetingName} />;
+  return <AiIntakeScreen greetingName={greetingName} initialReason={initialReason} />;
 }
