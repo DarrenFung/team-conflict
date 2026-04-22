@@ -486,6 +486,17 @@ function ReasonScreen({
   );
 }
 
+function derivePreAttached(moduleResults: Record<string, unknown>) {
+  const specIds = Object.values(moduleResults).flatMap((r) => {
+    const result = r as { uploads?: Array<{ specId: string; files: unknown[] }> };
+    return (result.uploads ?? []).filter((u) => u.files.length > 0).map((u) => u.specId);
+  });
+  return {
+    healthCard: specIds.includes("health_card"),
+    benefitsBooklet: specIds.includes("benefits_booklet"),
+  };
+}
+
 // ── ChatScreen ────────────────────────────────────────────────────────────────
 
 function ChatScreen({
@@ -735,6 +746,7 @@ function ChatScreen({
           <PersonalizeScreen
             encounterId={encounterId}
             anonymousAccessToken={anonymousAccessTokenRef.current}
+            preAttached={derivePreAttached(moduleResults)}
             onComplete={() => setIntakePhase("recommendation")}
           />
         ) : isComplete && intakePhase === "recommendation" ? (
@@ -900,7 +912,7 @@ function ChatScreen({
             )}
           </div>
         ) : null}
-        {!isComplete && status === "ready" && !isStreaming && !pending && turns.length > 0 && (
+        {/* {!isComplete && status === "ready" && !isStreaming && !pending && turns.length > 0 && (
           <button
             type="button"
             onClick={() => setManuallyComplete(true)}
@@ -911,7 +923,7 @@ function ChatScreen({
               <path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-        )}
+        )} */}
       </IntakeStage>
 
       {/* Bottom nav — hidden on completion */}

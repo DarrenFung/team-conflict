@@ -77,7 +77,7 @@ function CardStatusBadge({ done }: { done: boolean }) {
           : "border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] text-muted-foreground",
       )}
     >
-      {done ? "Added" : "Attach"}
+      {done ? "Attached" : "Attach"}
     </span>
   );
 }
@@ -274,24 +274,26 @@ function ConnectBtn({
 export type PersonalizeScreenProps = {
   encounterId: string | null;
   anonymousAccessToken: string | undefined;
+  preAttached?: { healthCard: boolean; benefitsBooklet: boolean };
   onComplete: () => void;
 };
 
 export function PersonalizeScreen({
   encounterId,
   anonymousAccessToken,
+  preAttached,
   onComplete,
 }: PersonalizeScreenProps) {
   // ── Card states ──────────────────────────────────────────────────────────────
   const [hc, setHc] = useState<FileCardState>({
     open: false,
-    done: false,
+    done: preAttached?.healthCard ?? false,
     files: [],
     uploading: false,
   });
   const [benefits, setBenefits] = useState<FileCardState>({
     open: false,
-    done: false,
+    done: preAttached?.benefitsBooklet ?? false,
     files: [],
     uploading: false,
   });
