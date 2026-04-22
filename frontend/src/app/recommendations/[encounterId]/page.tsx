@@ -55,7 +55,7 @@ export default async function RecommendationRoute({
 
   if (!isOwner && !hasValidToken) {
     console.error(
-      `[recommendation] Auth failed for encounter ${encounterId}: isOwner=${isOwner}, hasValidToken=${hasValidToken}, encounterUserId=${encounter.userId}, requestUserId=${user.id}`,
+      `[recommendation] Auth failed for encounter ${encounterId}: isOwner=${isOwner}, hasValidToken=${hasValidToken}, encounterUserId=${encounter.userId}, requestUserId=${user?.id}`,
     );
     notFound();
   }
