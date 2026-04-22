@@ -40,6 +40,14 @@ import type { PatientReview } from "@/app/api/intake/patient-review/route";
 
 const COMPLETION_MARKER = "[COMPLETE]";
 
+/** Tools that execute server-side (have an `execute` handler in the API route).
+ *  While in-flight these briefly appear as pending tool calls on the client —
+ *  we show a processing indicator instead of an "unknown tool" error. */
+const SERVER_SIDE_TOOLS = new Set([
+  "generate_recommendation",
+  "evaluate_input_requirements",
+]);
+
 type Props = {
   greetingName: string;
   initialReason?: string;
@@ -689,6 +697,11 @@ function ChatScreen({
                 });
               }}
             />
+            ) : pending && SERVER_SIDE_TOOLS.has(pending.toolName) ? (
+              /* Server-side tool executing — just show a thinking indicator */
+              <div className="mr-auto rounded-2xl border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] px-4 py-2.5 text-sm text-muted-foreground">
+                Thinking…
+              </div>
           </div>
         ) : pending ? (
           <div className="flex items-start gap-2 text-sm text-destructive">
