@@ -1,21 +1,42 @@
 "use client";
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
   type UIMessage,
 } from "ai";
-import { AlertCircle, CheckCircle2, Send } from "lucide-react";
+import { AlertCircle, Loader2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { upload } from "@vercel/blob/client";
 import { findModule } from "@/modules/registry";
 import { PostIntakeAccountPrompt } from "@/components/intake/post-intake-account-prompt";
 import { DownloadPdfButton } from "@/components/intake/download-pdf-button";
 import { createEncounter } from "@/app/actions/encounter";
+import { recordAttachment } from "@/app/actions/attachments";
 import { AskLukeTopNav } from "@/components/layout/ask-luke-top-nav";
 import { AskLukeWordmark } from "@/components/landing/ask-luke-wordmark";
 import { TrendingPrompts } from "@/components/landing/trending-prompts";
 import { LanguagePills } from "@/components/landing/language-pills";
+import {
+  IntakeJourneyBar,
+  IntakeProgressBar,
+  IntakeBottomNav,
+  IntakeStage,
+} from "@/components/intake/intake-journey-shell";
+import { deriveTurns } from "@/lib/intake/derive-turns";
+import {
+  IntakeReviewSummary,
+  IntakeReviewSummarySkeleton,
+} from "@/components/intake/intake-review-summary";
+import type { PatientReview } from "@/app/api/intake/patient-review/route";
 
 const COMPLETION_MARKER = "[COMPLETE]";
 
@@ -34,6 +55,297 @@ type Props = {
 
 type Step = "reason" | "chat";
 
+// ── Turn derivation ───────────────────────────────────────────────────────────
+
+type MessagePart = UIMessage["parts"][number];
+
+// ── Pending tool call helpers ─────────────────────────────────────────────────
+
+function partToolName(part: MessagePart): string | null {
+  if (typeof part.type === "string" && part.type.startsWith("tool-")) {
+    return part.type.slice("tool-".length);
+  }
+  return null;
+}
+
+type PendingToolCall = {
+  toolName: string;
+  toolCallId: string;
+  input: unknown;
+};
+
+function findPendingToolCall(messages: UIMessage[]): PendingToolCall | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== "assistant") continue;
+    for (const part of msg.parts) {
+      const toolName = partToolName(part);
+      if (!toolName) continue;
+      const p = part as unknown as {
+        state?: string;
+        toolCallId?: string;
+        input?: unknown;
+      };
+      if (p.state === "input-available" && p.toolCallId) {
+        return { toolName, toolCallId: p.toolCallId, input: p.input };
+      }
+    }
+  }
+  return null;
+}
+
+// ── Shared question-stage components ─────────────────────────────────────────
+
+function QNumber({ n, label = "Question" }: { n: number; label?: string }) {
+  return (
+    <p className="mb-4 flex items-center gap-1.5 text-[13px] font-medium text-primary opacity-80">
+      {label} {n}
+    </p>
+  );
+}
+
+function QText({ children }: { children: ReactNode }) {
+  return (
+    <h2 className="mb-8 font-[family-name:var(--font-dm-serif)] text-[clamp(22px,3.8vw,32px)] leading-[1.3] tracking-[-0.4px] text-[#0E1420]">
+      {children}
+    </h2>
+  );
+}
+
+/** Underline-style answer textarea matching the HTML mock */
+function AnswerInput({
+  value,
+  onChange,
+  onEnter,
+  placeholder = "Type your answer here…",
+  disabled,
+  autoFocus,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onEnter?: () => void;
+  placeholder?: string;
+  disabled?: boolean;
+  autoFocus?: boolean;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (autoFocus) {
+      const t = setTimeout(() => ref.current?.focus(), 60);
+      return () => clearTimeout(t);
+    }
+  }, [autoFocus]);
+
+  function autoResize() {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 200) + "px";
+  }
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      rows={1}
+      disabled={disabled}
+      placeholder={placeholder}
+      onChange={(e) => {
+        onChange(e.target.value);
+        autoResize();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          onEnter?.();
+        }
+      }}
+      className={cn(
+        "block w-full resize-none overflow-hidden border-0 border-b-2 border-[rgba(24,95,165,0.2)] bg-transparent pb-2.5 pt-2.5 font-light text-[18px] leading-relaxed text-foreground placeholder:text-[#C0C8D2] focus:border-primary focus:outline-none transition-colors duration-200",
+        disabled && "opacity-60 cursor-not-allowed",
+      )}
+    />
+  );
+}
+
+/** The OK + optional Skip row */
+function ActionRow({
+  onOk,
+  onSkip,
+  okLabel = "OK",
+  okDisabled,
+  showSkip = false,
+}: {
+  onOk: () => void;
+  onSkip?: () => void;
+  okLabel?: ReactNode;
+  okDisabled?: boolean;
+  showSkip?: boolean;
+}) {
+  return (
+    <div className="mt-8 flex items-center gap-4">
+      <button
+        type="button"
+        onClick={onOk}
+        disabled={okDisabled}
+        className="flex items-center gap-2 rounded-lg bg-primary px-6 py-3 text-[15px] font-medium text-white shadow-[0_3px_14px_rgba(24,95,165,0.22)] transition-all hover:bg-[#0e4a87] hover:-translate-y-px active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
+      >
+        {okLabel}
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden
+        >
+          <path
+            d="M5 12h14M13 6l6 6-6 6"
+            stroke="#fff"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </button>
+      {showSkip && onSkip && (
+        <button
+          type="button"
+          onClick={onSkip}
+          className="bg-transparent border-none text-[13px] text-muted-foreground px-1 py-1 transition-colors hover:text-foreground"
+        >
+          Skip
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── Rationale balloon ─────────────────────────────────────────────────────────
+
+function RationaleBalloon({ text }: { text: string }) {
+  return (
+    <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300 mb-6 inline-flex max-w-[420px] items-start gap-2 rounded-[0_10px_10px_10px] border border-[rgba(24,95,165,0.15)] bg-[#E6F1FB] px-3.5 py-2.5 text-[12px] leading-[1.55] text-[#0e4a87]">
+      <span
+        aria-hidden
+        className="mt-0.5 flex size-[18px] shrink-0 items-center justify-center rounded-full bg-primary font-[family-name:var(--font-dm-serif)] text-[10px] text-white"
+      >
+        L
+      </span>
+      {text}
+    </div>
+  );
+}
+
+// ── Upload row ────────────────────────────────────────────────────────────────
+
+function fmt(b: number): string {
+  if (b < 1024) return `${b} B`;
+  if (b < 1_048_576) return `${Math.round(b / 1024)} KB`;
+  return `${(b / 1_048_576).toFixed(1)} MB`;
+}
+
+type UploadRowProps = {
+  files: File[];
+  onAdd: (files: File[]) => void;
+  onRemove: (index: number) => void;
+  disabled?: boolean;
+};
+
+function UploadRow({ files, onAdd, onRemove, disabled }: UploadRowProps) {
+  function make(accept: string, capture?: string) {
+    return (
+      <input
+        type="file"
+        accept={accept}
+        {...(capture ? { capture: capture as "environment" } : {})}
+        multiple
+        disabled={disabled}
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) onAdd(Array.from(e.target.files));
+          e.target.value = "";
+        }}
+      />
+    );
+  }
+
+  const btnCls =
+    "flex cursor-pointer items-center gap-1.5 border-r border-[rgba(24,95,165,0.12)] px-3 py-[7px] text-[12px] text-muted-foreground transition-colors last:border-r-0 hover:bg-[#E6F1FB] hover:text-primary disabled:pointer-events-none disabled:opacity-50";
+
+  return (
+    <div className="mt-5">
+      {/* Button group */}
+      <div className="inline-flex overflow-hidden rounded-[9px] border border-[rgba(24,95,165,0.22)] bg-[#F7F9FC]">
+        <label className={btnCls}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <rect x="3" y="3" width="18" height="18" rx="3" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor" />
+            <path d="M3 15l5-5 4 4 3-3 6 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Photo
+          {make("image/*")}
+        </label>
+        <label className={btnCls}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx="12" cy="13" r="4" stroke="currentColor" strokeWidth="1.5" />
+          </svg>
+          Camera
+          {make("image/*", "environment")}
+        </label>
+        <label className={btnCls}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <polygon points="23 7 16 12 23 17 23 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <rect x="1" y="5" width="15" height="14" rx="2" stroke="currentColor" strokeWidth="1.5" />
+          </svg>
+          Video
+          {make("video/*")}
+        </label>
+        <label className={btnCls}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden>
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          File
+          {make("image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv")}
+        </label>
+      </div>
+
+      {/* File preview chips */}
+      {files.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {files.map((f, i) => (
+            <div
+              key={`${f.name}-${i}`}
+              className="flex items-center gap-2 rounded-lg border border-[rgba(24,95,165,0.15)] bg-[#F7F9FC] px-2.5 py-1.5"
+            >
+              <span className="max-w-[140px] truncate text-[11px] font-medium text-foreground">
+                {f.name}
+              </span>
+              <span className="shrink-0 text-[10px] text-muted-foreground">
+                {fmt(f.size)}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRemove(i)}
+                disabled={disabled}
+                aria-label={`Remove ${f.name}`}
+                className="shrink-0 text-muted-foreground transition-colors hover:text-destructive disabled:opacity-40"
+              >
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden>
+                  <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Background glow (original landing aesthetic) ─────────────────────────────
 
 function AskLukeBackgroundGlow() {
   return (
@@ -46,43 +358,7 @@ function AskLukeBackgroundGlow() {
   );
 }
 
-function FirstHxBadge() {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] px-2.5 py-1 text-[11px] font-medium tracking-wide text-muted-foreground">
-      <svg
-        width="9"
-        height="9"
-        viewBox="0 0 10 10"
-        className="shrink-0 text-primary/70"
-        aria-hidden
-      >
-        <circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" strokeWidth="1.1" />
-        <path
-          d="M5 2.5v2.8L6.8 6.5"
-          stroke="currentColor"
-          strokeWidth="1.1"
-          fill="none"
-          strokeLinecap="round"
-        />
-      </svg>
-      AI Intake
-    </span>
-  );
-}
-
-function Header({ greetingName }: { greetingName: string }) {
-  return (
-    <header className="mb-8 flex items-center justify-between">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-widest text-primary/80">
-          Intake Assessment
-        </p>
-        <h1 className="mt-1 text-lg font-semibold text-foreground">Hi {greetingName}</h1>
-      </div>
-      <FirstHxBadge />
-    </header>
-  );
-}
+// ── ReasonScreen — original landing-page look (no journey bar) ────────────────
 
 function ReasonScreen({
   initialReason,
@@ -172,137 +448,7 @@ function ReasonScreen({
   );
 }
 
-type MessagePart = UIMessage["parts"][number];
-
-function partToolName(part: MessagePart): string | null {
-  if (typeof part.type === "string" && part.type.startsWith("tool-")) {
-    return part.type.slice("tool-".length);
-  }
-  return null;
-}
-
-type PendingToolCall = {
-  toolName: string;
-  toolCallId: string;
-  input: unknown;
-};
-
-function findPendingToolCall(messages: UIMessage[]): PendingToolCall | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const msg = messages[i];
-    if (msg.role !== "assistant") continue;
-    for (const part of msg.parts) {
-      const toolName = partToolName(part);
-      if (!toolName) continue;
-      const p = part as unknown as {
-        state?: string;
-        toolCallId?: string;
-        input?: unknown;
-      };
-      if (p.state === "input-available" && p.toolCallId) {
-        return { toolName, toolCallId: p.toolCallId, input: p.input };
-      }
-    }
-  }
-  return null;
-}
-
-function ChatHistory({
-  messages,
-  isStreaming,
-  moduleResults,
-}: {
-  messages: UIMessage[];
-  isStreaming: boolean;
-  // Structured results keyed by toolCallId so modules can render a richer
-  // summary than the fallback chip. Only populated for the current session.
-  moduleResults: Record<string, unknown>;
-}) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, isStreaming]);
-
-  // Walk parts in order so a message like `[text, tool, text]` renders as
-  // two separate text bubbles with a "module completed" chip between them,
-  // instead of one merged bubble that hides the tool call.
-  const nodes: ReactNode[] = [];
-  for (const m of messages) {
-    let buffer = "";
-    let bubbleIdx = 0;
-    const flush = () => {
-      const text = buffer.replace(COMPLETION_MARKER, "").trim();
-      buffer = "";
-      if (!text) return;
-      nodes.push(
-        <div
-          key={`${m.id}-b${bubbleIdx}`}
-          className={cn(
-            "max-w-[85%] rounded-2xl px-4 py-2.5 text-[15px] leading-relaxed shadow-sm",
-            m.role === "user"
-              ? "ml-auto bg-primary text-primary-foreground shadow-[0_2px_10px_rgba(24,95,165,0.2)]"
-              : "mr-auto border border-[rgba(24,95,165,0.15)] bg-white text-foreground",
-          )}
-        >
-          <p className="whitespace-pre-wrap">{text}</p>
-        </div>,
-      );
-      bubbleIdx++;
-    };
-
-    m.parts.forEach((part, pIdx) => {
-      if (part.type === "text") {
-        buffer += (part as Extract<MessagePart, { type: "text" }>).text ?? "";
-        return;
-      }
-      const toolName = partToolName(part);
-      if (!toolName) return;
-      const p = part as { state?: string; toolCallId?: string };
-      // Only render the module once it's actually finished. While it's still
-      // awaiting input we render the module itself below the transcript.
-      if (p.state !== "output-available" && p.state !== "output-error") return;
-      flush();
-      const mod = findModule(toolName);
-      const result = p.toolCallId ? moduleResults[p.toolCallId] : undefined;
-      // Prefer the module's own summary renderer when we still have the raw
-      // result in memory; fall back to a compact completion chip otherwise.
-      const customSummary =
-        mod?.renderCompletedSummary && result !== undefined
-          ? mod.renderCompletedSummary(result)
-          : null;
-      if (customSummary) {
-        nodes.push(<Fragment key={`${m.id}-t${pIdx}`}>{customSummary}</Fragment>);
-        return;
-      }
-      const label = mod?.transcriptLabel ?? toolName;
-      nodes.push(
-        <div
-          key={`${m.id}-t${pIdx}`}
-          className="mx-auto flex items-center gap-1.5 rounded-full border border-[rgba(24,95,165,0.15)] bg-white/70 px-3 py-1 text-[11px] font-medium text-muted-foreground shadow-sm"
-        >
-          <CheckCircle2 className="size-3 text-primary" />
-          <span>{label} completed</span>
-        </div>,
-      );
-    });
-    flush();
-  }
-
-  return (
-    <div
-      ref={scrollRef}
-      className="flex max-h-[45vh] flex-col gap-3 overflow-y-auto pr-1"
-    >
-      {nodes}
-      {isStreaming && (
-        <div className="mr-auto rounded-2xl border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] px-4 py-2.5 text-sm text-muted-foreground">
-          Thinking…
-        </div>
-      )}
-    </div>
-  );
-}
+// ── ChatScreen ────────────────────────────────────────────────────────────────
 
 function ChatScreen({
   greetingName,
@@ -315,9 +461,14 @@ function ChatScreen({
   const [encounterError, setEncounterError] = useState<Error | null>(null);
   const [encounterId, setEncounterId] = useState<string | null>(null);
   const [moduleResults, setModuleResults] = useState<Record<string, unknown>>({});
-  // The transport body is a closure built once with `useChat`; state changes
-  // don't refresh it. A ref is the stable container the closure can read
-  // from on every request. State is kept in parallel for UI/module props.
+  const [browseIdx, setBrowseIdx] = useState<number>(0);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [review, setReview] = useState<PatientReview | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+  const reviewFetchedRef = useRef(false);
+
   const encounterIdRef = useRef<string | null>(null);
   const anonymousAccessTokenRef = useRef<string | undefined>(undefined);
   const seededRef = useRef(false);
@@ -335,7 +486,6 @@ function ChatScreen({
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
   });
 
-  // Record encounter, then seed chat so every /api/chat request includes encounterId.
   useEffect(() => {
     if (seededRef.current) return;
     seededRef.current = true;
@@ -352,135 +502,303 @@ function ChatScreen({
       });
   }, [initialReason, sendMessage]);
 
+  const turns = useMemo(() => deriveTurns(messages), [messages]);
   const pending = useMemo(() => findPendingToolCall(messages), [messages]);
+
+  // Fetch review summary once when the intake completes.
   const isComplete = useMemo(() => {
-    const lastAssistant = [...messages].reverse().find((m) => m.role === "assistant");
+    const lastAssistant = [...messages]
+      .reverse()
+      .find((m) => m.role === "assistant");
     if (!lastAssistant || status !== "ready") return false;
     const raw = lastAssistant.parts
-      .filter((p): p is Extract<MessagePart, { type: "text" }> => p.type === "text")
+      .filter(
+        (p): p is Extract<MessagePart, { type: "text" }> => p.type === "text",
+      )
       .map((p) => p.text ?? "")
       .join("");
     return raw.includes(COMPLETION_MARKER);
   }, [messages, status]);
 
-  function handleSend() {
-    const trimmed = input.trim();
-    if (!trimmed || status !== "ready" || pending || isComplete) return;
-    sendMessage({ text: trimmed });
-    setInput("");
-  }
+  useEffect(() => {
+    if (!isComplete || reviewFetchedRef.current) return;
+    reviewFetchedRef.current = true;
+    setReviewLoading(true);
+    fetch("/api/intake/patient-review", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages,
+        moduleResults,
+        greetingName,
+        encounterId: encounterIdRef.current,
+        ...(anonymousAccessTokenRef.current
+          ? { anonymousAccessToken: anonymousAccessTokenRef.current }
+          : {}),
+      }),
+    })
+      .then(async (res) => {
+        if (!res.ok) throw new Error(await res.text());
+        return res.json() as Promise<PatientReview>;
+      })
+      .then((data) => {
+        setReview(data);
+        setReviewLoading(false);
+      })
+      .catch((err) => {
+        console.error("[intake-review] fetch failed", err);
+        setReviewError("We couldn't generate your summary. Please try again.");
+        setReviewLoading(false);
+      });
+  }, [isComplete, messages, moduleResults, greetingName]);
 
   const isStreaming = status === "submitted" || status === "streaming";
+
+  // Always advance to the latest turn when a new question arrives.
+  // The user can browse back with the prev button at any time.
+  const latestIdx = Math.max(0, turns.length - 1);
+
+  useEffect(() => {
+    setBrowseIdx(latestIdx);
+  }, [latestIdx]);
+
+  // Reset attached files whenever the user moves to a different question.
+  useEffect(() => {
+    setAttachedFiles([]);
+  }, [browseIdx]);
+
+  const currentTurn = turns[browseIdx] ?? null;
+  const isLatestTurn = browseIdx === latestIdx;
+  const canEdit =
+    isLatestTurn && currentTurn?.answer === null && !isStreaming && !pending && !uploading;
+
   const activeModule = pending ? findModule(pending.toolName) : undefined;
+
+  // Progress: 15% at start of follow-up, up to 80% as turns accumulate.
+  const totalEstimated = Math.max(5, turns.length + 1);
+  const progressPct = isComplete
+    ? 90
+    : 15 + Math.min(65, (browseIdx / totalEstimated) * 65);
+
+  // Journey step
+  const journeyStep = isComplete ? "review" : "followup";
+
+  async function handleSend() {
+    const trimmed = input.trim();
+    if (!trimmed || !canEdit || uploading) return;
+
+    let text = trimmed;
+
+    if (attachedFiles.length > 0) {
+      setUploading(true);
+      try {
+        const names: string[] = [];
+        for (const f of attachedFiles) {
+          const contentType = f.type || "application/octet-stream";
+          const blob = await upload(f.name, f, {
+            access: "private",
+            handleUploadUrl: "/api/attachments/upload",
+            contentType,
+          });
+          await recordAttachment({
+            encounterId,
+            url: blob.url,
+            pathname: blob.pathname,
+            originalFilename: f.name,
+            contentType,
+            sizeBytes: f.size,
+            description: `Inline attachment for question ${browseIdx + 1}`,
+          });
+          names.push(f.name);
+        }
+        text = `${trimmed}\n\n(Attached: ${names.join(", ")})`;
+      } catch (err) {
+        console.error("File upload failed", err);
+        // Continue sending without the attachment note rather than blocking.
+      } finally {
+        setUploading(false);
+      }
+    }
+
+    sendMessage({ text });
+    setInput("");
+    setAttachedFiles([]);
+  }
+
+  // Skip: sends a placeholder so the model continues. Files are not uploaded on skip.
+  function handleSkip() {
+    if (!canEdit) return;
+    sendMessage({ text: "Skip" });
+    setInput("");
+    setAttachedFiles([]);
+  }
+
+  const hasError = error || encounterError;
 
   return (
     <div className="relative min-h-svh bg-white">
       <AskLukeTopNav />
-      <AskLukeBackgroundGlow />
+      <div className="fixed inset-x-0 top-[60px] z-50 border-b border-[rgba(24,95,165,0.12)] bg-white/95 pt-2 backdrop-blur-[10px]">
+        <IntakeJourneyBar active={journeyStep} />
+      </div>
+      {/* <IntakeProgressBar percent={progressPct} /> */}
 
-      <main className="relative z-10 mx-auto flex min-h-svh w-full max-w-[620px] flex-col px-6 pb-12 pt-[76px] sm:px-8">
-        <Header greetingName={greetingName} />
-
-        {error || encounterError ? (
+      <IntakeStage>
+        {hasError ? (
           <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-5 text-sm text-destructive">
             <div className="flex items-start gap-3">
               <AlertCircle className="mt-0.5 size-4 shrink-0" />
               <p>{(error ?? encounterError)?.message || "Something went wrong."}</p>
             </div>
           </div>
-        ) : (
-          <div className="intake-glass flex flex-grow flex-col gap-4 rounded-2xl p-6 sm:p-8">
-            <ChatHistory
+        ) : isComplete ? (
+          // ── Completion / Review ──────────────────────────────────────────
+          <div
+            key="complete"
+            className="flex flex-col gap-6"
+          >
+            {!review && !reviewError ? (
+              <IntakeReviewSummarySkeleton />
+            ) : reviewError ? (
+              <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-5 text-sm text-destructive">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
+                  <p>{reviewError}</p>
+                </div>
+              </div>
+            ) : review ? (
+              <IntakeReviewSummary review={review} />
+            ) : null}
+            <DownloadPdfButton
               messages={messages}
-              isStreaming={isStreaming}
+              greetingName={greetingName}
               moduleResults={moduleResults}
             />
-
-            {isComplete ? (
-              <div className="flex flex-col gap-4 border-t border-[rgba(24,95,165,0.12)] pt-6">
-                <div className="flex flex-col items-center gap-2 text-center">
-                  <CheckCircle2 className="size-9 text-primary drop-shadow-[0_2px_8px_rgba(24,95,165,0.2)]" />
-                  <p className="font-[family-name:var(--font-dm-serif)] text-lg text-foreground">
-                    Assessment complete
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Your intake summary has been recorded above.
-                  </p>
-                </div>
-                <DownloadPdfButton
-                  messages={messages}
-                  greetingName={greetingName}
-                  moduleResults={moduleResults}
-                />
-                <PostIntakeAccountPrompt />
-              </div>
-            ) : pending && activeModule ? (
-              <activeModule.Component
-                args={pending.input}
-                encounterId={encounterId}
-                onComplete={(result) => {
-                  setModuleResults((prev) => ({ ...prev, [pending.toolCallId]: result }));
-                  addToolOutput({
-                    tool: pending.toolName,
-                    toolCallId: pending.toolCallId,
-                    output: activeModule.formatResultForLLM(result),
-                  });
-                }}
-              />
+            <PostIntakeAccountPrompt />
+          </div>
+        ) : pending && activeModule ? (
+          // ── Module stage ─────────────────────────────────────────────────
+          <div
+            key={pending.toolCallId}
+            className="animate-in fade-in-0 slide-in-from-bottom-4 duration-300"
+          >
+            <activeModule.Component
+              args={pending.input}
+              encounterId={encounterId}
+              onComplete={(result) => {
+                setModuleResults((prev) => ({
+                  ...prev,
+                  [pending.toolCallId]: result,
+                }));
+                addToolOutput({
+                  tool: pending.toolName,
+                  toolCallId: pending.toolCallId,
+                  output: activeModule.formatResultForLLM(result),
+                });
+              }}
+            />
             ) : pending && SERVER_SIDE_TOOLS.has(pending.toolName) ? (
               /* Server-side tool executing — just show a thinking indicator */
               <div className="mr-auto rounded-2xl border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] px-4 py-2.5 text-sm text-muted-foreground">
                 Thinking…
               </div>
-            ) : pending ? (
-              <div className="flex items-start gap-2 border-t border-[rgba(24,95,165,0.12)] pt-4 text-sm text-destructive">
-                <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                <p>
-                  AI called an unknown tool ({pending.toolName}). Check the module registry.
-                </p>
+          </div>
+        ) : pending ? (
+          <div className="flex items-start gap-2 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" />
+            <p>AI called an unknown tool ({pending.toolName}). Check the module registry.</p>
+          </div>
+        ) : isStreaming && turns.length === 0 ? (
+          // ── Initial thinking ─────────────────────────────────────────────
+          <div className="animate-pulse text-sm text-muted-foreground">
+            Thinking…
+          </div>
+        ) : currentTurn ? (
+          // ── Question stage ───────────────────────────────────────────────
+          <div
+            key={browseIdx}
+            className="animate-in fade-in-0 slide-in-from-bottom-4 duration-300"
+          >
+            <QNumber n={browseIdx + 1} />
+            <QText>{currentTurn.question}</QText>
+
+            {/* Rationale balloon — only when the AI provided one */}
+            {currentTurn.rationale && (
+              <RationaleBalloon text={currentTurn.rationale} />
+            )}
+
+            {isStreaming && isLatestTurn && currentTurn.answer === null ? (
+              <div className="animate-pulse text-sm text-muted-foreground">
+                Thinking…
               </div>
+            ) : canEdit || uploading ? (
+              // Editable input for latest unanswered question
+              <>
+                <AnswerInput
+                  value={input}
+                  onChange={setInput}
+                  onEnter={handleSend}
+                  autoFocus={canEdit}
+                  disabled={uploading}
+                />
+                <UploadRow
+                  files={attachedFiles}
+                  onAdd={(incoming) =>
+                    setAttachedFiles((prev) => {
+                      const names = new Set(prev.map((f) => f.name));
+                      return [...prev, ...incoming.filter((f) => !names.has(f.name))];
+                    })
+                  }
+                  onRemove={(i) =>
+                    setAttachedFiles((prev) => prev.filter((_, idx) => idx !== i))
+                  }
+                  disabled={uploading}
+                />
+                <ActionRow
+                  onOk={handleSend}
+                  okDisabled={!input.trim() || uploading}
+                  okLabel={
+                    uploading ? (
+                      <span className="flex items-center gap-2">
+                        <Loader2 className="size-3.5 animate-spin" />
+                        Uploading…
+                      </span>
+                    ) : (
+                      "OK"
+                    )
+                  }
+                  onSkip={handleSkip}
+                  showSkip={!uploading}
+                />
+              </>
             ) : (
-              <div className="relative border-t border-[rgba(24,95,165,0.12)] pt-4">
-                <div
-                  className={cn(
-                    "relative overflow-hidden rounded-[14px] border-[1.5px] border-[rgba(24,95,165,0.2)] bg-white shadow-[0_2px_16px_rgba(24,95,165,0.06)] transition-[border-color,box-shadow] duration-200",
-                    "focus-within:border-primary focus-within:shadow-[0_4px_24px_rgba(24,95,165,0.12)]",
-                  )}
-                >
-                  <textarea
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    placeholder="Type your answer…"
-                    disabled={status !== "ready"}
-                    rows={3}
-                    className="block min-h-[100px] max-h-[140px] w-full resize-none bg-transparent px-4 pb-14 pt-3 text-[15px] leading-relaxed text-foreground placeholder:text-[#A0AEC0] focus:outline-none disabled:opacity-60"
-                  />
-                  <div className="absolute bottom-2.5 right-2.5">
-                    <button
-                      type="button"
-                      onClick={handleSend}
-                      disabled={!input.trim() || status !== "ready"}
-                      className="flex size-10 items-center justify-center rounded-[10px] bg-primary text-primary-foreground shadow-[0_2px_8px_rgba(24,95,165,0.25)] transition-transform hover:bg-[#0e4a87] active:scale-[1.04] disabled:pointer-events-none disabled:opacity-40"
-                      aria-label="Send"
-                    >
-                      <Send className="size-[18px]" />
-                    </button>
-                  </div>
-                </div>
-              </div>
+              // Read-only view of a past answer (or waiting for stream)
+              currentTurn.answer && (
+                <p className="border-b-2 border-[rgba(24,95,165,0.12)] pb-2.5 pt-2.5 text-[18px] font-light leading-relaxed text-foreground/70">
+                  {currentTurn.answer}
+                </p>
+              )
             )}
           </div>
-        )}
-      </main>
+        ) : null}
+      </IntakeStage>
+
+      {/* Bottom nav — hidden on completion */}
+      {!isComplete && turns.length > 0 && (
+        <IntakeBottomNav
+          current={browseIdx + 1}
+          total={turns.length}
+          onPrev={() => setBrowseIdx((i) => Math.max(0, i - 1))}
+          onNext={() => setBrowseIdx((i) => Math.min(latestIdx, i + 1))}
+          prevDisabled={browseIdx === 0}
+          nextDisabled={browseIdx >= latestIdx}
+        />
+      )}
     </div>
   );
 }
+
+// ── Root export ───────────────────────────────────────────────────────────────
 
 export function AiIntakeScreen({ greetingName, initialReason }: Props) {
   const [step, setStep] = useState<Step>(initialReason ? "chat" : "reason");
