@@ -377,9 +377,10 @@ ${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${att
   );
 
   // Phase 2: Structure the text recommendation into a RecommendationPayload.
-  // Pure shape-transformation — no reasoning required, so run on flash-lite.
+  // The output schema is large/deeply nested — flash-lite chokes on it, so
+  // use the full flash model here.
   const structuredResult = await generateText({
-    model: vertex(FAST_MODEL),
+    model: vertex("gemini-2.5-flash"),
     output: Output.object({ schema: recommendationPayloadSchema }),
     system: STRUCTURING_SYSTEM_PROMPT,
     prompt: `## Patient Intake Summary
