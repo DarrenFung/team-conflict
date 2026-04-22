@@ -1,7 +1,5 @@
 "use client";
-
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -9,56 +7,27 @@ import {
   type UIMessage,
 } from "ai";
 import { AlertCircle, CheckCircle2, Send } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { findModule } from "@/modules/registry";
 import { PostIntakeAccountPrompt } from "@/components/intake/post-intake-account-prompt";
+import { DownloadPdfButton } from "@/components/intake/download-pdf-button";
 import { createEncounter } from "@/app/actions/encounter";
+import { AskLukeTopNav } from "@/components/layout/ask-luke-top-nav";
+import { AskLukeWordmark } from "@/components/landing/ask-luke-wordmark";
+import { TrendingPrompts } from "@/components/landing/trending-prompts";
+import { LanguagePills } from "@/components/landing/language-pills";
 
 const COMPLETION_MARKER = "[COMPLETE]";
 
 type Props = {
   greetingName: string;
+  initialReason?: string;
 };
 
 type Step = "reason" | "chat";
 
-/** Fixed top nav — logo + auth actions, matches page.tsx header */
-function NavaraTopNav() {
-  return (
-    <header className="fixed inset-x-0 top-0 z-50 flex h-[60px] items-center justify-between border-b border-[rgba(24,95,165,0.12)] bg-white/90 px-6 backdrop-blur-[10px] sm:px-8">
-      <Link
-        href="/"
-        className="font-[family-name:var(--font-dm-serif)] text-[20px] tracking-tight text-foreground"
-      >
-        Nav<span className="text-primary">ara</span>
-      </Link>
-      <div className="flex items-center gap-2">
-        <Link
-          href="/sign-in"
-          className={cn(
-            buttonVariants({ variant: "outline", size: "sm" }),
-            "border-primary/25 text-primary text-[13px] hover:border-primary hover:bg-secondary",
-          )}
-        >
-          Log in
-        </Link>
-        <Link
-          href="/sign-up"
-          className={cn(
-            buttonVariants({ size: "sm" }),
-            "text-[13px] font-medium shadow-[0_2px_10px_rgba(24,95,165,0.2)] hover:bg-primary/90",
-          )}
-        >
-          Sign up
-        </Link>
-      </div>
-    </header>
-  );
-}
 
-/** Subtle radial glow — same as main::before in navara-landing-v2.html */
-function NavaraBackgroundGlow() {
+function AskLukeBackgroundGlow() {
   return (
     <div
       className="pointer-events-none absolute left-1/2 top-[45%] -translate-x-1/2 -translate-y-1/2 size-[600px] rounded-full"
@@ -107,36 +76,34 @@ function Header({ greetingName }: { greetingName: string }) {
   );
 }
 
-const REASON_PROMPTS = [
-  "I've had knee pain for 3 weeks and don't know if I need physio or a specialist",
-  "I'm feeling anxious and overwhelmed and don't know where to get help",
-  "I need a family doctor and don't know how to find one covered by my plan",
-];
-
-function ReasonScreen({ onContinue }: { onContinue: (reason: string) => void }) {
-  const [reason, setReason] = useState("");
+function ReasonScreen({
+  initialReason,
+  onContinue,
+}: {
+  initialReason?: string;
+  onContinue: (reason: string) => void;
+}) {
+  const [reason, setReason] = useState(initialReason ?? "");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const trimmed = reason.trim();
 
   return (
     <div className="relative flex min-h-svh flex-col bg-white">
-      <NavaraTopNav />
-      <NavaraBackgroundGlow />
+      <AskLukeTopNav />
+      <AskLukeBackgroundGlow />
 
       <main className="relative z-10 flex flex-1 flex-col px-4 pt-[60px] pb-8 sm:px-6">
-        <div className="mx-auto mt-10 flex w-full max-w-3xl flex-col items-center text-center">
-          <p className="font-[family-name:var(--font-dm-serif)] text-[52px] leading-none tracking-[-2px] text-foreground">
-            Nav<span className="text-primary">ara</span>
-          </p>
+        <div className="mx-auto mt-10 flex w-full max-w-[620px] flex-col items-center text-center">
+          <AskLukeWordmark size="hero" />
           <p className="mt-2 text-[15px] font-light tracking-[0.01em] text-muted-foreground">
-            Navigate care with confidence
+            navigate care with confidence
           </p>
         </div>
 
-        <div className="mx-auto mt-8 flex w-full max-w-3xl flex-1 flex-col">
+        <div className="mx-auto mt-8 flex w-full max-w-[620px] flex-1 flex-col items-center">
           <div
             className={cn(
-              "flex h-[180px] cursor-text flex-col overflow-hidden rounded-[14px] border-[1.5px] border-[rgba(24,95,165,0.2)] bg-white shadow-[0_2px_16px_rgba(24,95,165,0.06)] transition-[border-color,box-shadow] duration-200",
+              "w-full cursor-text overflow-hidden rounded-[14px] border-[1.5px] border-[rgba(24,95,165,0.2)] bg-white shadow-[0_2px_16px_rgba(24,95,165,0.06)] transition-[border-color,box-shadow] duration-200",
               "focus-within:border-primary focus-within:shadow-[0_4px_24px_rgba(24,95,165,0.12)]",
             )}
             onClick={() => textareaRef.current?.focus()}
@@ -151,8 +118,9 @@ function ReasonScreen({ onContinue }: { onContinue: (reason: string) => void }) 
                   onContinue(trimmed);
                 }
               }}
-              placeholder="Describe what's going on — e.g."
-              className="min-h-0 flex-1 resize-none bg-transparent px-4 pt-3 pb-2 text-[15px] leading-relaxed text-foreground placeholder:text-[#A0AEC0] focus:outline-none sm:px-5 sm:pt-[14px]"
+              placeholder="What is going on with your health today?"
+              rows={3}
+              className="block w-full resize-none bg-transparent px-5 pt-[18px] pb-3.5 text-[16px] leading-[1.55] text-foreground placeholder:text-[#A0AEC0] focus:outline-none"
             />
 
             <div className="flex shrink-0 items-center justify-between border-t border-[rgba(24,95,165,0.12)] px-3 py-2.5">
@@ -183,21 +151,13 @@ function ReasonScreen({ onContinue }: { onContinue: (reason: string) => void }) 
             </div>
           </div>
 
-          <div className="mt-4 flex flex-col gap-2.5">
-            {REASON_PROMPTS.map((chip) => (
-              <button
-                key={chip}
-                type="button"
-                onClick={() => {
-                  setReason(chip);
-                  textareaRef.current?.focus();
-                }}
-                className="w-full rounded-[20px] border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] px-4 py-3 text-left text-sm text-muted-foreground transition-colors hover:border-[rgba(24,95,165,0.25)] hover:bg-[#E6F1FB] hover:text-primary"
-              >
-                {chip}
-              </button>
-            ))}
-          </div>
+          <TrendingPrompts
+            onSelect={(text) => {
+              setReason(text);
+              textareaRef.current?.focus();
+            }}
+          />
+          <LanguagePills />
         </div>
       </main>
     </div>
@@ -351,12 +311,18 @@ function ChatScreen({
   // don't refresh it. A ref is the stable container the closure can read
   // from on every request. State is kept in parallel for UI/module props.
   const encounterIdRef = useRef<string | null>(null);
+  const anonymousAccessTokenRef = useRef<string | undefined>(undefined);
   const seededRef = useRef(false);
 
   const { messages, sendMessage, status, error, addToolOutput } = useChat({
     transport: new DefaultChatTransport({
       api: "/api/chat",
-      body: () => ({ encounterId: encounterIdRef.current }),
+      body: () => ({
+        encounterId: encounterIdRef.current,
+        ...(anonymousAccessTokenRef.current
+          ? { anonymousAccessToken: anonymousAccessTokenRef.current }
+          : {}),
+      }),
     }),
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
   });
@@ -366,8 +332,9 @@ function ChatScreen({
     if (seededRef.current) return;
     seededRef.current = true;
     createEncounter()
-      .then(({ id }) => {
+      .then(({ id, anonymousAccessToken }) => {
         encounterIdRef.current = id;
+        anonymousAccessTokenRef.current = anonymousAccessToken;
         setEncounterId(id);
         sendMessage({ text: initialReason });
       })
@@ -400,8 +367,8 @@ function ChatScreen({
 
   return (
     <div className="relative min-h-svh bg-white">
-      <NavaraTopNav />
-      <NavaraBackgroundGlow />
+      <AskLukeTopNav />
+      <AskLukeBackgroundGlow />
 
       <main className="relative z-10 mx-auto flex min-h-svh w-full max-w-[620px] flex-col px-6 pb-12 pt-[76px] sm:px-8">
         <Header greetingName={greetingName} />
@@ -432,6 +399,11 @@ function ChatScreen({
                     Your intake summary has been recorded above.
                   </p>
                 </div>
+                <DownloadPdfButton
+                  messages={messages}
+                  greetingName={greetingName}
+                  moduleResults={moduleResults}
+                />
                 <PostIntakeAccountPrompt />
               </div>
             ) : pending && activeModule ? (
@@ -497,13 +469,14 @@ function ChatScreen({
   );
 }
 
-export function AiIntakeScreen({ greetingName }: Props) {
-  const [step, setStep] = useState<Step>("reason");
-  const [reason, setReason] = useState("");
+export function AiIntakeScreen({ greetingName, initialReason }: Props) {
+  const [step, setStep] = useState<Step>(initialReason ? "chat" : "reason");
+  const [reason, setReason] = useState(initialReason ?? "");
 
   if (step === "reason") {
     return (
       <ReasonScreen
+        initialReason={reason}
         onContinue={(r) => {
           setReason(r);
           setStep("chat");

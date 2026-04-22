@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import {
   convertToModelMessages,
   stepCountIs,
@@ -100,7 +101,8 @@ export async function POST(req: Request) {
   const {
     messages,
     encounterId,
-  }: { messages: UIMessage[]; encounterId?: string } = await req.json();
+    anonymousAccessToken,
+  }: { messages: UIMessage[]; encounterId?: string; anonymousAccessToken?: string } = await req.json();
 
   if (!encounterId) {
     return new Response("encounterId is required", { status: 400 });
@@ -110,7 +112,7 @@ export async function POST(req: Request) {
 
   const encounter = await prisma.encounter.findUnique({
     where: { id: encounterId },
-    select: { userId: true },
+    select: { userId: true, anonymousAccessToken: true },
   });
   if (!encounter) {
     console.error(
@@ -118,11 +120,26 @@ export async function POST(req: Request) {
     );
     return new Response(`Encounter ${encounterId} not found`, { status: 404 });
   }
-  if (encounter.userId !== user.id) {
-    console.error(
-      `[api/chat] encounter ${encounterId} belongs to ${encounter.userId}, request user is ${user.id}`,
-    );
-    return new Response("Encounter belongs to a different user", { status: 403 });
+
+  if (encounter.userId != null) {
+    if (encounter.userId !== user.id) {
+      console.error(
+        `[api/chat] encounter ${encounterId} belongs to ${encounter.userId}, request user is ${user.id}`,
+      );
+      return new Response("Encounter belongs to a different user", { status: 403 });
+    }
+  } else {
+    if (
+      !encounter.anonymousAccessToken ||
+      !anonymousAccessToken ||
+      encounter.anonymousAccessToken.length !== anonymousAccessToken.length ||
+      !timingSafeEqual(
+        Buffer.from(encounter.anonymousAccessToken),
+        Buffer.from(anonymousAccessToken),
+      )
+    ) {
+      return new Response("Unauthorized", { status: 401 });
+    }
   }
 
   // Server-side tools — defined inside POST to close over encounterId and user
