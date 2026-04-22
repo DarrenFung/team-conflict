@@ -49,6 +49,48 @@ const SERVER_SIDE_TOOLS = new Set([
   "evaluate_input_requirements",
 ]);
 
+/** Status phrases cycled in the pending-tool bubble. `generate_recommendation`
+ *  can take 10-30s so the rotation gives the user a sense of progress; the
+ *  order roughly mirrors the stages the recommend() pipeline runs through. */
+const RECOMMENDATION_PHRASES = [
+  "Interpreting symptoms…",
+  "Reading reference materials…",
+  "Checking coverage options…",
+  "Looking up nearby providers…",
+  "Assessing urgency…",
+  "Structuring your recommendation…",
+];
+
+const EVALUATE_PHRASES = [
+  "Reviewing your intake…",
+  "Deciding what to ask next…",
+];
+
+function CyclingStatus({
+  phrases,
+  intervalMs = 2800,
+}: {
+  phrases: string[];
+  intervalMs?: number;
+}) {
+  const [idx, setIdx] = useState(0);
+  useEffect(() => {
+    if (phrases.length <= 1) return;
+    const t = setInterval(() => {
+      setIdx((i) => (i + 1) % phrases.length);
+    }, intervalMs);
+    return () => clearInterval(t);
+  }, [phrases.length, intervalMs]);
+  return (
+    <span
+      key={idx}
+      className="inline-block animate-in fade-in-0 duration-500"
+    >
+      {phrases[idx]}
+    </span>
+  );
+}
+
 type Props = {
   greetingName: string;
   initialReason?: string;
@@ -714,7 +756,13 @@ function ChatScreen({
           </div>
         ) : pending && SERVER_SIDE_TOOLS.has(pending.toolName) ? (
           <div className="mr-auto rounded-2xl border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] px-4 py-2.5 text-sm text-muted-foreground">
-            Thinking…
+            <CyclingStatus
+              phrases={
+                pending.toolName === "generate_recommendation"
+                  ? RECOMMENDATION_PHRASES
+                  : EVALUATE_PHRASES
+              }
+            />
           </div>
         ) : pending ? (
           <div className="flex items-start gap-2 text-sm text-destructive">
