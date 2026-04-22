@@ -403,11 +403,23 @@ function ReasonScreen({
   onContinue,
 }: {
   initialReason?: string;
-  onContinue: (reason: string) => void;
+  onContinue: (reason: string, files: File[]) => void;
 }) {
   const [reason, setReason] = useState(initialReason ?? "");
+  const [files, setFiles] = useState<File[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const trimmed = reason.trim();
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!e.target.files) return;
+    const incoming = Array.from(e.target.files);
+    setFiles((prev) => {
+      const names = new Set(prev.map((f) => f.name));
+      return [...prev, ...incoming.filter((f) => !names.has(f.name))];
+    });
+    e.target.value = "";
+  }
 
   return (
     <div className="relative flex min-h-svh flex-col bg-white">
@@ -437,7 +449,7 @@ function ReasonScreen({
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.shiftKey && trimmed) {
                   e.preventDefault();
-                  onContinue(trimmed);
+                  onContinue(trimmed, files);
                 }
               }}
               placeholder="What is going on with your health today?"
@@ -445,25 +457,64 @@ function ReasonScreen({
               className="block w-full resize-none bg-transparent px-5 pt-[18px] pb-3.5 text-[16px] leading-[1.55] text-foreground placeholder:text-[#A0AEC0] focus:outline-none"
             />
 
+            {/* Attached file chips */}
+            {files.length > 0 && (
+              <div className="flex flex-wrap gap-2 px-4 pb-3">
+                {files.map((f, i) => (
+                  <div
+                    key={`${f.name}-${i}`}
+                    className="flex items-center gap-2 rounded-lg border border-[rgba(24,95,165,0.15)] bg-[#F7F9FC] px-2.5 py-1.5"
+                  >
+                    <span className="max-w-[140px] truncate text-[11px] font-medium text-foreground">
+                      {f.name}
+                    </span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">
+                      {fmt(f.size)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setFiles((prev) => prev.filter((_, idx) => idx !== i));
+                      }}
+                      aria-label={`Remove ${f.name}`}
+                      className="shrink-0 text-muted-foreground transition-colors hover:text-destructive"
+                    >
+                      <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden>
+                        <path d="M1 1l10 10M11 1L1 11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="flex shrink-0 items-center justify-between border-t border-[rgba(24,95,165,0.12)] px-3 py-2.5">
-              <button
-                type="button"
-                aria-disabled
-                className="flex items-center gap-1.5 rounded-lg border border-[rgba(24,95,165,0.12)] px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-[rgba(24,95,165,0.25)] hover:bg-[#E6F1FB] hover:text-primary"
+              <label
+                className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-[rgba(24,95,165,0.12)] px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-[rgba(24,95,165,0.25)] hover:bg-[#E6F1FB] hover:text-primary"
+                onClick={(e) => e.stopPropagation()}
               >
                 <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
                   <rect x="1" y="3" width="14" height="10" rx="2" stroke="currentColor" strokeWidth="1.3" />
                   <path d="M1 11l4-4 3 3 2-2 4 4" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
                 </svg>
                 Photo / Video / File
-              </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+              </label>
 
               <button
                 type="button"
                 disabled={!trimmed}
                 onClick={(e) => {
                   e.stopPropagation();
-                  if (trimmed) onContinue(trimmed);
+                  if (trimmed) onContinue(trimmed, files);
                 }}
                 className="flex size-10 items-center justify-center rounded-[10px] bg-primary text-primary-foreground shadow-[0_2px_8px_rgba(24,95,165,0.25)] transition-transform hover:bg-[#0e4a87] active:scale-[1.04] disabled:pointer-events-none disabled:opacity-40"
                 aria-label="Continue"
@@ -502,10 +553,12 @@ function derivePreAttached(moduleResults: Record<string, unknown>) {
 function ChatScreen({
   greetingName,
   initialReason,
+  initialFiles = [],
   onReset,
 }: {
   greetingName: string;
   initialReason: string;
+  initialFiles?: File[];
   onReset: () => void;
 }) {
   const [input, setInput] = useState("");
@@ -545,17 +598,50 @@ function ChatScreen({
     if (seededRef.current) return;
     seededRef.current = true;
     createEncounter()
-      .then(({ id, anonymousAccessToken }) => {
+      .then(async ({ id, anonymousAccessToken }) => {
         encounterIdRef.current = id;
         anonymousAccessTokenRef.current = anonymousAccessToken;
         setEncounterId(id);
-        sendMessage({ text: initialReason });
+
+        let text = initialReason;
+
+        if (initialFiles.length > 0) {
+          setUploading(true);
+          try {
+            const names: string[] = [];
+            for (const f of initialFiles) {
+              const contentType = f.type || "application/octet-stream";
+              const blob = await upload(f.name, f, {
+                access: "private",
+                handleUploadUrl: "/api/attachments/upload",
+                contentType,
+              });
+              await recordAttachment({
+                encounterId: id,
+                url: blob.url,
+                pathname: blob.pathname,
+                originalFilename: f.name,
+                contentType,
+                sizeBytes: f.size,
+                description: "Attachment from initial intake question",
+              });
+              names.push(f.name);
+            }
+            text = `${initialReason}\n\n(Attached: ${names.join(", ")})`;
+          } catch (err) {
+            console.error("Initial file upload failed", err);
+          } finally {
+            setUploading(false);
+          }
+        }
+
+        sendMessage({ text });
       })
       .catch((err) => {
         console.error("Failed to create encounter", err);
         setEncounterError(err instanceof Error ? err : new Error(String(err)));
       });
-  }, [initialReason, sendMessage]);
+  }, [initialReason, initialFiles, sendMessage]);
 
   const turns = useMemo(() => deriveTurns(messages), [messages]);
   const pending = useMemo(() => findPendingToolCall(messages), [messages]);
@@ -946,13 +1032,15 @@ function ChatScreen({
 export function AiIntakeScreen({ greetingName, initialReason }: Props) {
   const [step, setStep] = useState<Step>(initialReason ? "chat" : "reason");
   const [reason, setReason] = useState(initialReason ?? "");
+  const [initialFiles, setInitialFiles] = useState<File[]>([]);
 
   if (step === "reason") {
     return (
       <ReasonScreen
         initialReason={reason}
-        onContinue={(r) => {
+        onContinue={(r, files) => {
           setReason(r);
+          setInitialFiles(files);
           setStep("chat");
         }}
       />
@@ -963,6 +1051,7 @@ export function AiIntakeScreen({ greetingName, initialReason }: Props) {
     <ChatScreen
       greetingName={greetingName}
       initialReason={reason}
+      initialFiles={initialFiles}
       onReset={() => setStep("reason")}
     />
   );

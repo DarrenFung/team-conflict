@@ -35,7 +35,7 @@ export default function SignInPage() {
           href="/"
           className="font-[family-name:var(--font-dm-serif)] text-[20px] tracking-tight text-foreground"
         >
-          Nav<span className="text-primary">ara</span>
+          Ask<span className="text-primary">Luke</span>
         </Link>
         <Link
           href="/app"

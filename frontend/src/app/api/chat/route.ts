@@ -341,14 +341,30 @@ export async function POST(req: Request) {
           data: { encounterType: triageCategory },
         });
 
+        // Resolve location: prefer coords passed by the LLM, fall back to
+        // the location saved during the personalize step.
+        let effectiveLocation: { lat: number; lon: number } | undefined;
+        if (latitude != null && longitude != null) {
+          effectiveLocation = { lat: latitude, lon: longitude };
+        } else {
+          const personalization = await prisma.personalizationData.findUnique({
+            where: { encounterId },
+            select: { location: true },
+          });
+          const stored = personalization?.location as
+            | { lat: number; lng: number }
+            | null
+            | undefined;
+          if (stored?.lat != null && stored?.lng != null) {
+            effectiveLocation = { lat: stored.lat, lon: stored.lng };
+          }
+        }
+
         const result = await recommend({
           symptoms,
           intakeSummary,
           triageCategory,
-          location:
-            latitude != null && longitude != null
-              ? { lat: latitude, lon: longitude }
-              : undefined,
+          location: effectiveLocation,
           encounterId,
           userId: user.id,
         });
