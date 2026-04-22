@@ -32,7 +32,13 @@ export default async function RecommendationRoute({
     },
   });
 
-  if (!encounter || !encounter.recommendationPayload) {
+  if (!encounter) {
+    console.error(`[recommendation] Encounter ${encounterId} not found`);
+    notFound();
+  }
+
+  if (!encounter.recommendationPayload) {
+    console.error(`[recommendation] Encounter ${encounterId} has no recommendationPayload`);
     notFound();
   }
 
@@ -48,6 +54,9 @@ export default async function RecommendationRoute({
     token === encounter.anonymousAccessToken;
 
   if (!isOwner && !hasValidToken) {
+    console.error(
+      `[recommendation] Auth failed for encounter ${encounterId}: isOwner=${isOwner}, hasValidToken=${hasValidToken}, encounterUserId=${encounter.userId}, requestUserId=${user.id}`,
+    );
     notFound();
   }
 

@@ -25,7 +25,7 @@ const requiredInputSchema = z.object({
 const llmOutputSchema = z.object({
   requiredInputs: z
     .array(requiredInputSchema)
-    .describe("Ordered list of tools to invoke. firsthxSymptomCapture should come first."),
+    .describe("Ordered list of tools to invoke (typically document upload requests)."),
   reasoning: z
     .string()
     .describe("Brief overall reasoning for the input requirements decision"),
@@ -43,26 +43,26 @@ const AVAILABLE_TOOLS_DESCRIPTION = modules
   .map((m) => `- **${m.name}**: ${m.description}`)
   .join("\n");
 
-const SYSTEM_PROMPT = `You are a clinical intake coordinator deciding what additional structured inputs are needed before generating a care recommendation.
+const SYSTEM_PROMPT = `You are a clinical intake coordinator deciding what additional document uploads are needed before generating a care recommendation.
+
+The AI chatbot has already conducted a thorough clinical interview with the patient. Your job is to determine whether supporting documents (health card, benefits booklet) should be requested.
 
 ## Available tools
 ${AVAILABLE_TOOLS_DESCRIPTION}
 
 ## Triage categories
 
-The conversation summary will be prefixed with a triage category. Use it to determine which tools are needed:
+The conversation summary will be prefixed with a triage category:
 
 ### CLINICAL (prefix "CLINICAL:")
-The patient has a specific medical symptom or health complaint.
-- **firsthxSymptomCapture is required.** Set the \`symptomHint\` arg to a short description of the primary symptom (e.g. "knee pain", "headache", "anxiety").
+The patient has a specific medical symptom or health complaint. The AI has already asked detailed clinical follow-up questions.
 - **requestAttachmentUpload** — conditionally request document uploads:
   - **Health card** (\`id: "health_card"\`): Request when the recommendation may involve OHIP-covered services. Do NOT request if the user already has one on file.
   - **Benefits booklet** (\`id: "benefits_booklet"\`): Request when the issue might benefit from employer-covered services (physiotherapy, chiropractic, massage therapy, mental health counseling, EAP, etc.). Do NOT request if the user already has one on file.
   If both are needed, combine them into a single \`requestAttachmentUpload\` call with multiple attachment entries.
 
 ### NON-CLINICAL (prefix "NON-CLINICAL:")
-The patient has a non-clinical concern (benefits, refills, finding a provider, administrative, etc.). The AI chatbot has already asked guided follow-up questions, so there is no need for structured symptom capture.
-- **Do NOT include firsthxSymptomCapture.** The conversational follow-up already gathered the needed context.
+The patient has a non-clinical concern (benefits, refills, finding a provider, administrative, etc.).
 - **requestAttachmentUpload** — proactively request uploads for documents NOT already on file that would help with the patient's concern:
   - **Health card** (\`id: "health_card"\`, \`label: "Health card"\`, \`description: "Photo of your Ontario health card (front)"\`, \`multiple: false\`): Request if the patient doesn't already have one on file. A health card helps verify coverage eligibility.
   - **Benefits booklet** (\`id: "benefits_booklet"\`, \`label: "Benefits booklet"\`, \`description: "Your employer benefits booklet or summary of coverage (PDF)"\`, \`multiple: true\`): Request if the patient doesn't already have one on file. Benefits info helps recommend covered services.
@@ -70,8 +70,8 @@ The patient has a non-clinical concern (benefits, refills, finding a provider, a
 - Only return an empty requiredInputs array if both documents are already on file or if the concern is purely administrative (e.g. booking logistics) where documents wouldn't help.
 
 ## Rules
-1. **Ordering**: Always put firsthxSymptomCapture first (if included), then requestAttachmentUpload (if needed).
-2. **Output the exact tool names** as they appear above. Do not invent tool names.
+1. **Output the exact tool names** as they appear above. Do not invent tool names.
+2. Only request document uploads — do not request any symptom capture tools.
 
 ## Output format
 Return a JSON object with:
@@ -123,23 +123,10 @@ ${existingDocs}`,
 
   logCachedUsage("evaluate-inputs", result.providerMetadata);
 
-  const isNonClinical = input.conversationSummary.startsWith("NON-CLINICAL:");
-
-  const output = result.output ?? (isNonClinical
-    ? {
-        requiredInputs: [],
-        reasoning: "Fallback: non-clinical concern, no structured symptom capture needed",
-      }
-    : {
-        requiredInputs: [
-          {
-            tool: "firsthxSymptomCapture",
-            args: { symptomHint: input.chiefComplaint },
-            reason: "Structured symptom capture is required for clinical concerns",
-          },
-        ],
-        reasoning: "Fallback: defaulting to firsthx for clinical concern",
-      });
+  const output = result.output ?? {
+    requiredInputs: [],
+    reasoning: "Fallback: no additional document uploads required",
+  };
 
   // Validate tool names against registry
   const validToolNames = new Set(modules.map((m) => m.name));

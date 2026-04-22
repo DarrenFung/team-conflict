@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -510,11 +511,13 @@ function ChatScreen({
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [review, setReview] = useState<PatientReview | null>(null);
-  const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewError, setReviewError] = useState<string | null>(null);
   const reviewFetchedRef = useRef(false);
   const [manuallyComplete, setManuallyComplete] = useState(false);
   const [intakePhase, setIntakePhase] = useState<"chat" | "personalize" | "recommendation">("chat");
+  const [reviewData, setReviewData] = useState<PatientReview | null>(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const router = useRouter();
 
   const encounterIdRef = useRef<string | null>(null);
   const anonymousAccessTokenRef = useRef<string | undefined>(undefined);
@@ -628,6 +631,15 @@ function ChatScreen({
       : isComplete
         ? "review"
         : "followup";
+
+  function handleContinueToRecommendation() {
+    const eid = encounterIdRef.current;
+    if (!eid) return;
+    const tokenParam = anonymousAccessTokenRef.current
+      ? `?token=${anonymousAccessTokenRef.current}`
+      : "";
+    router.push(`/recommendations/${eid}${tokenParam}`);
+  }
 
   async function handleSend() {
     const trimmed = input.trim();
