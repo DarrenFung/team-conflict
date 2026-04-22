@@ -61,7 +61,7 @@ export function CareSummaryCard({ summary }: Props) {
 
       {/* Disclaimer */}
       <div className="border-t border-border px-5 py-[14px] text-[11.5px] leading-[1.65] text-muted-foreground/50">
-        <strong className="font-medium text-muted-foreground">Not a diagnosis.</strong> Navara is a
+        <strong className="font-medium text-muted-foreground">Not a diagnosis.</strong> AskLuke is a
         navigation tool only. Always consult a qualified healthcare provider.
       </div>
     </div>

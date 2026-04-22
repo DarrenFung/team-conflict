@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { mockRecommendationPayload } from "@/lib/mocks/recommendation";
-import { NavaraTopNav } from "@/components/layout/navara-top-nav";
+import { AskLukeTopNav } from "@/components/layout/ask-luke-top-nav";
 import { JourneyBar } from "@/components/recommendations/journey-bar";
 import { RecommendationShell } from "@/components/recommendations/recommendation-shell";
 import { RecommendationHeroSection } from "@/components/recommendations/recommendation-hero";
@@ -13,7 +13,7 @@ import { CareSummaryCard } from "@/components/recommendations/care-summary-card"
 import { MedicalDisclaimer } from "@/components/recommendations/medical-disclaimer";
 
 export const metadata: Metadata = {
-  title: "Navara — Your Care Plan",
+  title: "AskLuke — Your Care Plan",
   description:
     "Evidence-based recommendations, key insights, and coverage guidance — tailored to your profile.",
 };
@@ -23,7 +23,7 @@ export default function RecommendationsPage() {
 
   return (
     <div className="relative min-h-svh bg-[#f5f5f5]">
-      <NavaraTopNav />
+      <AskLukeTopNav />
       <JourneyBar steps={data.journeySteps} />
 
       <RecommendationShell

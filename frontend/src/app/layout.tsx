@@ -21,8 +21,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Navara — Navigate care with confidence",
-  description: "Answer a few quick questions and we'll route you to the right care.",
+  title: "AskLuke — Navigate care with confidence",
+  description: "Describe what's going on and AskLuke's AI will guide you to the right care.",
 };
 
 export default function RootLayout({

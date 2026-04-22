@@ -4,7 +4,7 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Navara blue theme — replaces shadcn’s default primary (~hue 154 green).
+/* AskLuke blue theme — replaces shadcn’s default primary (~hue 154 green).
    Tokens are unlayered so they win over layered rules from shadcn/tailwind.css.
    --blue #185FA5  →  oklch(0.44 0.14 253)
    --blue-dark #0e4a87  →  oklch(0.35 0.13 254)
