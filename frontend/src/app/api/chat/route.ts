@@ -231,6 +231,9 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: vertex("gemini-2.5-flash"),
+    providerOptions: {
+      google: { thinkingConfig: { thinkingBudget: 1024 } },
+    },
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(messages),
     tools,
