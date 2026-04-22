@@ -4,6 +4,7 @@ import { z } from "zod";
 import { vertex } from "@/lib/vertex";
 import { prisma } from "@/lib/db";
 import { modules } from "@/modules/registry";
+import { logCachedUsage } from "@/lib/llm-metrics";
 
 const MODEL = "gemini-2.5-flash";
 
@@ -106,6 +107,10 @@ export async function evaluateInputRequirements(
 
   const result = await generateText({
     model: vertex(MODEL),
+    // Routing decision over a short rule table — not worth heavy thinking.
+    providerOptions: {
+      google: { thinkingConfig: { thinkingBudget: 512 } },
+    },
     output: Output.object({ schema: llmOutputSchema }),
     system: SYSTEM_PROMPT,
     prompt: `## Conversation Summary
@@ -117,6 +122,8 @@ ${input.chiefComplaint}
 ## Documents already on file for this user
 ${existingDocs}`,
   });
+
+  logCachedUsage("evaluate-inputs", result.providerMetadata);
 
   const isNonClinical = input.conversationSummary.startsWith("NON-CLINICAL:");
 

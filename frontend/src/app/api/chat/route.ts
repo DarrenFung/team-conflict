@@ -13,6 +13,7 @@ import { prisma } from "@/lib/db";
 import { vertex } from "@/lib/vertex";
 import { recommend } from "@/lib/recommend";
 import { evaluateInputRequirements } from "@/lib/evaluate-inputs";
+import { logCachedUsage } from "@/lib/llm-metrics";
 
 export const maxDuration = 120;
 
@@ -238,6 +239,13 @@ export async function POST(req: Request) {
     messages: await convertToModelMessages(messages),
     tools,
     stopWhen: stepCountIs(20),
+    // Gemini 2.5 implicit caching reuses stable prefixes (our system prompt
+    // + tool defs don't change), so we log the cached token count to verify
+    // the cache is actually hitting. If `cached` stays ~0 on repeated
+    // turns, the prefix has drifted and we should investigate.
+    onFinish: ({ providerMetadata }) => {
+      logCachedUsage("chat", providerMetadata);
+    },
   });
 
   return result.toUIMessageStreamResponse();

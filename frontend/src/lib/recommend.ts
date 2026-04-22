@@ -5,6 +5,7 @@ import { get } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { vertex } from "@/lib/vertex";
 import { mapsTool } from "@/lib/maps";
+import { logCachedUsage } from "@/lib/llm-metrics";
 import {
   recommendationPayloadSchema,
   type RecommendationPayload,
@@ -90,25 +91,28 @@ export type RecommendInput = {
   userId: string;
 };
 
-export async function recommend(input: RecommendInput): Promise<RecommendationPayload> {
-  // 1. Load mandatory guidance resources
-  const guidanceResources = await prisma.resource.findMany({
-    where: { type: "guidance" },
-  });
+type FilePart = { type: "file"; data: Uint8Array; mediaType: string };
 
-  // 2. Load all article titles for selection
+async function loadGuidance() {
+  return prisma.resource.findMany({ where: { type: "guidance" } });
+}
+
+async function selectArticles(symptoms: string) {
   const articleIndex = await prisma.resource.findMany({
     where: { type: "article" },
     select: { id: true, title: true },
   });
 
-  // 3. Select relevant articles via LLM
   const titleList = articleIndex
     .map((a) => `[${a.id}] ${a.title}`)
     .join("\n");
 
   const selectionResult = await generateText({
     model: vertex(MODEL),
+    // Pure relevance ranking over titles — minimal reasoning required.
+    providerOptions: {
+      google: { thinkingConfig: { thinkingBudget: 512 } },
+    },
     output: Output.object({
       schema: z.object({
         articleIds: z
@@ -125,7 +129,7 @@ Select articles that cover:
 
 Respond with the article IDs only.`,
     prompt: `## Patient symptoms
-${input.symptoms}
+${symptoms}
 
 ## Available articles
 ${titleList}`,
@@ -134,81 +138,98 @@ ${titleList}`,
   const selectedIds =
     selectionResult.output?.articleIds?.slice(0, MAX_ARTICLES) ?? [];
 
+  logCachedUsage("recommend-select", selectionResult.providerMetadata);
   console.log(
     `[recommend] Selected ${selectedIds.length} articles:`,
     selectedIds.map((id: number) => articleIndex.find((a) => a.id === id)?.title).filter(Boolean),
   );
 
-  // 4. Load selected article content
   const selectedArticles =
     selectedIds.length > 0
-      ? await prisma.resource.findMany({
-          where: { id: { in: selectedIds } },
-        })
+      ? await prisma.resource.findMany({ where: { id: { in: selectedIds } } })
       : [];
+  return selectedArticles;
+}
 
-  // 5. Load patient documents — pull from the current encounter AND any
-  //    prior uploads for this user (e.g. benefits booklet from a previous session).
-  //    Deduplicate by description, preferring the most recent upload.
-  let attachmentContext = "";
-  let fileParts: Array<{ type: "file"; data: Uint8Array; mediaType: string }> = [];
-  {
-    const allAttachments = await prisma.attachment.findMany({
-      where: {
-        OR: [
-          ...(input.encounterId ? [{ encounterId: input.encounterId }] : []),
-          { userId: input.userId },
-        ],
-      },
-      select: { url: true, description: true, originalFilename: true, contentType: true, createdAt: true },
-      orderBy: { createdAt: "desc" },
-    });
+async function loadAttachments(opts: {
+  encounterId: string | undefined;
+  userId: string;
+}): Promise<{ attachmentContext: string; fileParts: FilePart[] }> {
+  const allAttachments = await prisma.attachment.findMany({
+    where: {
+      OR: [
+        ...(opts.encounterId ? [{ encounterId: opts.encounterId }] : []),
+        { userId: opts.userId },
+      ],
+    },
+    select: { url: true, description: true, originalFilename: true, contentType: true, createdAt: true },
+    orderBy: { createdAt: "desc" },
+  });
 
-    // Deduplicate by description — keep the most recent (already sorted desc)
-    const seen = new Set<string>();
-    const attachments = allAttachments.filter((a) => {
-      if (seen.has(a.description)) return false;
-      seen.add(a.description);
-      return true;
-    });
-    if (attachments.length > 0) {
-      attachmentContext =
-        "\n\n## Patient Documents Attached\n" +
-        attachments
-          .map((a) => `- ${a.description}: ${a.originalFilename} (${a.contentType})`)
-          .join("\n") +
-        "\n\nThe actual file contents are attached to this message. Review them as part of your assessment.";
+  // Deduplicate by description — keep the most recent (already sorted desc)
+  const seen = new Set<string>();
+  const attachments = allAttachments.filter((a) => {
+    if (seen.has(a.description)) return false;
+    seen.add(a.description);
+    return true;
+  });
 
-      // Download file contents from Vercel Blob for inline delivery to Gemini
-      const downloadResults = await Promise.all(
-        attachments.map(async (a) => {
-          try {
-            const result = await get(a.url, { access: "private" });
-            if (!result) {
-              console.warn(`[recommend] Blob not found for ${a.originalFilename}`);
-              return null;
-            }
-            const data = new Uint8Array(await new Response(result.stream).arrayBuffer());
-            if (data.byteLength === 0) {
-              console.warn(`[recommend] Skipping empty attachment: ${a.originalFilename}`);
-              return null;
-            }
-            return {
-              type: "file" as const,
-              data,
-              mediaType: result.blob.contentType || a.contentType,
-            };
-          } catch (err) {
-            console.warn(`[recommend] Failed to download attachment ${a.originalFilename}:`, err);
-            return null;
-          }
-        }),
-      );
-      fileParts = downloadResults.filter((p): p is NonNullable<typeof p> => p !== null);
-    }
+  if (attachments.length === 0) {
+    return { attachmentContext: "", fileParts: [] };
   }
 
-  // 6. Assemble context
+  const attachmentContext =
+    "\n\n## Patient Documents Attached\n" +
+    attachments
+      .map((a) => `- ${a.description}: ${a.originalFilename} (${a.contentType})`)
+      .join("\n") +
+    "\n\nThe actual file contents are attached to this message. Review them as part of your assessment.";
+
+  const downloadResults = await Promise.all(
+    attachments.map(async (a) => {
+      try {
+        const result = await get(a.url, { access: "private" });
+        if (!result) {
+          console.warn(`[recommend] Blob not found for ${a.originalFilename}`);
+          return null;
+        }
+        const data = new Uint8Array(await new Response(result.stream).arrayBuffer());
+        if (data.byteLength === 0) {
+          console.warn(`[recommend] Skipping empty attachment: ${a.originalFilename}`);
+          return null;
+        }
+        return {
+          type: "file" as const,
+          data,
+          mediaType: result.blob.contentType || a.contentType,
+        };
+      } catch (err) {
+        console.warn(`[recommend] Failed to download attachment ${a.originalFilename}:`, err);
+        return null;
+      }
+    }),
+  );
+  const fileParts = downloadResults.filter(
+    (p): p is NonNullable<typeof p> => p !== null,
+  );
+  return { attachmentContext, fileParts };
+}
+
+export async function recommend(input: RecommendInput): Promise<RecommendationPayload> {
+  // Kick off the three independent pre-LLM chains in parallel:
+  //   A. guidance resources (single DB read)
+  //   B. article index → LLM selection → full article content (DB + LLM + DB)
+  //   C. attachment rows → blob downloads (DB + N network fetches)
+  // Chain B is typically the critical path; overlapping with C hides the
+  // blob-download latency behind the selection LLM call.
+  const [guidanceResources, selectedArticles, { attachmentContext, fileParts }] =
+    await Promise.all([
+      loadGuidance(),
+      selectArticles(input.symptoms),
+      loadAttachments({ encounterId: input.encounterId, userId: input.userId }),
+    ]);
+
+  // Assemble context
   const guidanceByTitle = Object.fromEntries(
     guidanceResources.map((r) => [r.title, r.content]),
   );
@@ -249,17 +270,22 @@ ${guidanceByTitle["ED Diversion Principles"] ?? "(Not available)"}
 
 ${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${attachmentContext}`;
 
-  // 7. Generate recommendation — try with attachments, then progressively
-  //    drop files that Gemini can't process.
+  // Generate recommendation — try with attachments, then progressively
+  // drop files that Gemini can't process. The main clinical reasoning
+  // call — this is where thinking actually helps, so budget is higher
+  // than the routing calls but still bounded to keep TTFT reasonable.
   const generateOptions = {
     model: vertex(MODEL),
+    providerOptions: {
+      google: { thinkingConfig: { thinkingBudget: 2048 } },
+    },
     system: SYSTEM_PROMPT,
     ...(input.location
       ? { tools: { find_nearby_healthcare_provider: mapsTool }, maxSteps: 5 }
       : {}),
   };
 
-  let remainingParts = [...fileParts];
+  const remainingParts = [...fileParts];
   let textRecommendation: string;
 
   // Phase 1: Generate text recommendation (with tools for provider search)
@@ -281,6 +307,7 @@ ${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${att
         ],
       });
       textRecommendation = result.text;
+      logCachedUsage("recommend-text", result.providerMetadata);
       break;
     } catch (err) {
       if (remainingParts.length > 0) {
@@ -300,9 +327,14 @@ ${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${att
     `[recommend] Phase 1 complete — text recommendation generated (${textRecommendation.length} chars)`,
   );
 
-  // Phase 2: Structure the text recommendation into a RecommendationPayload
+  // Phase 2: Structure the text recommendation into a RecommendationPayload.
+  // Pure shape-transformation — no reasoning to speak of, so thinking is
+  // kept low.
   const structuredResult = await generateText({
     model: vertex(MODEL),
+    providerOptions: {
+      google: { thinkingConfig: { thinkingBudget: 512 } },
+    },
     output: Output.object({ schema: recommendationPayloadSchema }),
     system: STRUCTURING_SYSTEM_PROMPT,
     prompt: `## Patient Intake Summary
@@ -324,6 +356,7 @@ ${textRecommendation}`,
     throw new Error("Failed to structure recommendation into payload");
   }
 
+  logCachedUsage("recommend-structure", structuredResult.providerMetadata);
   console.log("[recommend] Phase 2 complete — structured payload generated");
 
   // Attach top 3 Health811 source articles used for this recommendation.
