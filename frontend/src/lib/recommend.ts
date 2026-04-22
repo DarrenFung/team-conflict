@@ -5,6 +5,10 @@ import { get } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { vertex } from "@/lib/vertex";
 import { mapsTool } from "@/lib/maps";
+import {
+  recommendationPayloadSchema,
+  type RecommendationPayload,
+} from "@/types/recommendation";
 
 const MODEL = "gemini-2.5-flash";
 const MAX_ARTICLES = 20;
@@ -64,6 +68,20 @@ You have access to the following sources of information:
 - Use plain language — avoid medical jargon unless explaining a condition name
 `;
 
+const STRUCTURING_SYSTEM_PROMPT = `You are a healthcare recommendation data structurer. Convert a natural-language healthcare recommendation and patient intake data into a structured JSON recommendation payload matching the output schema.
+
+Guidelines:
+- **profile**: Extract patient location, chief complaint, symptoms, and relevant history from the intake summary. Left column = "What you described" (symptoms, severity, key details). Right column = "What you've tried" (prior treatments, self-care attempts, or relevant negatives). Include badges for insurance plan (blue), urgency level (teal), and notable benefits like EAP (purple).
+- **urgency**: Determine from the recommendation. "non-urgent" = routine care, "moderate" = should be seen soon, "urgent" = immediate/emergency. The message should explain the assessment in plain language.
+- **recommendation**: The primary care pathway with 2-4 distinct action steps. Each step should have a clear title and 1-3 supporting bullet points with specific details (costs, timelines, coverage).
+- **insights**: 2-3 key clinical insights. Include likelihood/probability bars where the recommendation suggests probability or effectiveness rates.
+- **coverage**: Create plans based on the patient's known insurance plus OHIP and uninsured fallbacks. Each plan has coverage rows (what's covered and at what cost) and benefit actions (what the patient can do next). If the patient has employer insurance, list it first.
+- **careResources**: 2-4 actionable next-step resources with clear titles and descriptions.
+- **careSummary**: Sidebar with key stats (condition, severity, urgency, recommended care, estimated cost) plus a primary action button and secondary action links.
+- **benefitsSnapshot**: Quick reference for relevant benefit balances. Only include if specific insurance/benefits details are known from the intake or uploaded documents.
+
+Use plain, patient-facing language. Be specific about costs, coverage, and next steps where possible.`;
+
 export type RecommendInput = {
   symptoms: string;
   intakeSummary: string;
@@ -72,7 +90,7 @@ export type RecommendInput = {
   userId: string;
 };
 
-export async function recommend(input: RecommendInput): Promise<string> {
+export async function recommend(input: RecommendInput): Promise<RecommendationPayload> {
   // 1. Load mandatory guidance resources
   const guidanceResources = await prisma.resource.findMany({
     where: { type: "guidance" },
@@ -242,7 +260,9 @@ ${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${att
   };
 
   let remainingParts = [...fileParts];
+  let textRecommendation: string;
 
+  // Phase 1: Generate text recommendation (with tools for provider search)
   while (true) {
     try {
       const note = remainingParts.length < fileParts.length && remainingParts.length === 0
@@ -260,7 +280,8 @@ ${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${att
           },
         ],
       });
-      return result.text;
+      textRecommendation = result.text;
+      break;
     } catch (err) {
       if (remainingParts.length > 0) {
         // Drop the last file and retry — isolates which file Gemini can't process
@@ -274,4 +295,36 @@ ${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${att
       throw err;
     }
   }
+
+  console.log(
+    `[recommend] Phase 1 complete — text recommendation generated (${textRecommendation.length} chars)`,
+  );
+
+  // Phase 2: Structure the text recommendation into a RecommendationPayload
+  const structuredResult = await generateText({
+    model: vertex(MODEL),
+    output: Output.object({ schema: recommendationPayloadSchema }),
+    system: STRUCTURING_SYSTEM_PROMPT,
+    prompt: `## Patient Intake Summary
+
+${input.intakeSummary}
+
+## Chief Complaint
+
+${input.symptoms}
+${input.location ? `\n**Patient location:** ${input.location.lat}, ${input.location.lon}\n` : ""}
+---
+
+## Generated Recommendation
+
+${textRecommendation}`,
+  });
+
+  if (!structuredResult.output) {
+    throw new Error("Failed to structure recommendation into payload");
+  }
+
+  console.log("[recommend] Phase 2 complete — structured payload generated");
+
+  return structuredResult.output;
 }

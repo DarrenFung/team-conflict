@@ -1,155 +1,309 @@
-// ── Journey bar ──────────────────────────────────────────────────────────────
+import { z } from "zod";
 
-export type JourneyStepState = "done" | "active" | "upcoming";
+// ── Shared enums ─────────────────────────────────────────────────────────────
 
-export interface JourneyStep {
-  id: string;
-  label: string;
-  state: JourneyStepState;
-}
+const badgeVariantSchema = z.enum(["blue", "teal", "purple", "surface"]);
+const colorVariantSchema = z.enum([
+  "blue",
+  "teal",
+  "purple",
+  "amber",
+  "red",
+  "gray",
+]);
+const statusVariantSchema = z.enum(["green", "amber", "coral"]);
+const coverageStatusSchema = z.enum(["ok", "warn", "no", "info"]);
+const urgencyVariantSchema = z.enum(["non-urgent", "moderate", "urgent"]);
+const statVariantSchema = z.enum(["neutral", "teal", "amber"]);
 
-// ── Hero ──────────────────────────────────────────────────────────────────────
+// ── Profile Card ─────────────────────────────────────────────────────────────
 
-export interface RecommendationHero {
-  eyebrow: string;
-  title: string;
-  subtitle: string;
-}
+const profileBadgeSchema = z.object({
+  label: z
+    .string()
+    .describe(
+      "Short badge label, e.g. 'GreenShield Flex', 'Non-urgent', 'EAP active'",
+    ),
+  variant: badgeVariantSchema.describe(
+    "blue=insurance, teal=urgency/positive, purple=benefits, surface=neutral",
+  ),
+});
 
-// ── Profile & Situation ───────────────────────────────────────────────────────
+const profileFactSchema = z.object({
+  emoji: z.string().describe("A single emoji representing this fact"),
+  text: z
+    .string()
+    .describe("Concise fact text, e.g. 'Left knee pain · 3 weeks'"),
+});
 
-export interface ProfileFact {
-  iconKey: "user" | "calendar" | "pill" | "drop" | "heart";
-  text: string;
-}
+const profileColumnSchema = z.object({
+  heading: z
+    .string()
+    .describe(
+      "Column heading, e.g. 'What you described' or 'What you've tried'",
+    ),
+  facts: z.array(profileFactSchema).min(1).max(6),
+});
 
-export interface ProfileColumn {
-  heading: string;
-  facts: ProfileFact[];
-}
+const profileCardSchema = z.object({
+  location: z.string().describe("Patient location, e.g. 'North York, ON'"),
+  meta: z
+    .string()
+    .describe("Brief context line, e.g. 'Assessed today · Knee pain'"),
+  badges: z.array(profileBadgeSchema).min(1).max(4),
+  left: profileColumnSchema.describe(
+    "Left column: symptoms and current situation",
+  ),
+  right: profileColumnSchema.describe(
+    "Right column: what the patient has tried or relevant history",
+  ),
+});
 
-export interface ProfileSituation {
-  left: ProfileColumn;
-  right: ProfileColumn;
-}
+// ── Urgency Bar ──────────────────────────────────────────────────────────────
 
-// ── Primary Recommendation ────────────────────────────────────────────────────
+const urgencyBarSchema = z.object({
+  variant: urgencyVariantSchema,
+  message: z
+    .string()
+    .describe(
+      "Urgency explanation, e.g. 'Based on your symptoms, this is non-urgent — no ER visit needed. Physiotherapy is the right first step.'",
+    ),
+});
 
-export type StatusVariant = "green" | "amber" | "coral";
+// ── Primary Recommendation ───────────────────────────────────────────────────
 
-export interface ActionBullet {
-  text: string;
-}
+const actionRowSchema = z.object({
+  emoji: z.string().describe("A single emoji for this action step"),
+  colorVariant: colorVariantSchema.describe(
+    "Background color theme for the icon",
+  ),
+  title: z
+    .string()
+    .describe(
+      "Action step title, e.g. 'Book a physiotherapy assessment this week'",
+    ),
+  bullets: z
+    .array(z.string())
+    .min(1)
+    .max(4)
+    .describe("Supporting details for this action"),
+});
 
-export interface ActionRow {
-  emoji: string;
-  bgClass: string;
-  title: string;
-  bullets: ActionBullet[];
-}
+const primaryRecommendationSchema = z.object({
+  title: z
+    .string()
+    .describe(
+      "Main recommendation headline, e.g. 'Start with physiotherapy'",
+    ),
+  status: z.object({
+    label: z
+      .string()
+      .describe(
+        "Status label, e.g. 'Routine', 'Urgent', 'Follow-up needed'",
+      ),
+    variant: statusVariantSchema,
+  }),
+  intro: z
+    .string()
+    .describe("1-2 sentence explanation of the recommendation rationale"),
+  actionRows: z.array(actionRowSchema).min(1).max(5),
+});
 
-export interface PrimaryRecommendation {
-  title: string;
-  status: { label: string; variant: StatusVariant };
-  intro: string;
-  actionRows: ActionRow[];
-}
+// ── Key Insights ─────────────────────────────────────────────────────────────
 
-// ── Insights ──────────────────────────────────────────────────────────────────
+const insightBarSchema = z.object({
+  label: z
+    .string()
+    .describe("Bar label, e.g. 'Likelihood', 'Resolution rate'"),
+  value: z
+    .number()
+    .min(0)
+    .max(100)
+    .describe("Percentage value for the bar"),
+  colorVariant: colorVariantSchema,
+});
 
-export interface Insight {
-  id: string;
-  emoji: string;
-  bgClass: string;
-  name: string;
-  body: string;
-  bar?: { label: string; value: number; colorClass: string };
-}
+const insightSchema = z.object({
+  emoji: z.string(),
+  colorVariant: colorVariantSchema,
+  name: z
+    .string()
+    .describe(
+      "Insight headline, e.g. 'Most likely: patellofemoral pain syndrome'",
+    ),
+  body: z.string().describe("1-2 sentence insight explanation"),
+  bar: insightBarSchema.optional(),
+});
 
-// ── Care Advocacy ─────────────────────────────────────────────────────────────
+// ── Coverage ─────────────────────────────────────────────────────────────────
 
-export interface AdvocacyItem {
-  id: string;
-  emoji: string;
-  bgClass: string;
-  title: string;
-  subtitle: string;
-  href?: string;
-}
+const coverageRowSchema = z.object({
+  status: coverageStatusSchema.describe(
+    "ok=covered, warn=partial/conditional, no=not covered, info=informational",
+  ),
+  name: z.string().describe("Service name, e.g. 'Physiotherapy'"),
+  detail: z
+    .string()
+    .describe("Plan/coverage detail, e.g. 'GreenShield Flex · $800/yr'"),
+  value: z
+    .string()
+    .describe(
+      "Cost or status, e.g. '$0 today', 'OHIP covered', '$75-$120/session'",
+    ),
+  valueVariant: coverageStatusSchema.describe(
+    "Color variant for the value text",
+  ),
+});
 
-// ── Insurance Eligibility ─────────────────────────────────────────────────────
+const benefitActionSchema = z.object({
+  emoji: z.string(),
+  colorVariant: colorVariantSchema,
+  title: z
+    .string()
+    .describe("Action title, e.g. 'Submit a physio claim'"),
+  subtitle: z.string().describe("Brief description of the action"),
+  eta: z
+    .string()
+    .describe(
+      "Time estimate or call-to-action, e.g. '~2 min', 'Instant access', 'See options'",
+    ),
+});
 
-export type InsurancePlanKey = "medicare" | "medicaid" | "private" | "uninsured";
+const coveragePlanSchema = z.object({
+  id: z
+    .string()
+    .describe(
+      "Plan identifier slug, e.g. 'greenshield', 'ohip', 'uninsured'",
+    ),
+  label: z
+    .string()
+    .describe(
+      "Display label, e.g. 'GreenShield Flex', 'OHIP only', 'No insurance'",
+    ),
+  rows: z.array(coverageRowSchema).min(1).max(8),
+  actions: z.array(benefitActionSchema).max(4),
+});
 
-export type CoverageIndicator = "ok" | "warn" | "no" | "info";
+const coverageSchema = z.object({
+  plans: z
+    .array(coveragePlanSchema)
+    .min(1)
+    .max(4)
+    .describe(
+      "Coverage plans ordered from most relevant to fallback. Always include OHIP and uninsured as fallback options.",
+    ),
+});
 
-export interface CoverageItem {
-  status: CoverageIndicator;
-  title: string;
-  detail: string;
-}
+// ── Care Resources ───────────────────────────────────────────────────────────
 
-export interface CoverageCard {
-  title: string;
-  badgeLabel: string;
-  badgeVariant: "teal" | "amber" | "blue";
-  items: CoverageItem[];
-}
+const careResourceSchema = z.object({
+  emoji: z.string(),
+  colorVariant: colorVariantSchema,
+  title: z
+    .string()
+    .describe(
+      "Resource title, e.g. 'Find in-network physiotherapists near you'",
+    ),
+  subtitle: z
+    .string()
+    .describe(
+      "Brief description, e.g. '3 matched providers · North York · direct billing'",
+    ),
+});
 
-export interface InsurancePlanData {
-  covered: number;
-  auth: number;
-  cost: string;
-  cards: CoverageCard[];
-}
+// ── Care Summary (sidebar) ───────────────────────────────────────────────────
 
-export interface TakeActionItem {
-  id: string;
-  emoji: string;
-  bgClass: string;
-  title: string;
-  subtitle: string;
-  href?: string;
-}
+const careStatSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+  variant: statVariantSchema.describe(
+    "neutral=default, teal=positive/good, amber=warning",
+  ),
+});
 
-export interface InsuranceEligibility {
-  plans: Record<InsurancePlanKey, InsurancePlanData>;
-  takeActionRows: TakeActionItem[];
-}
+const careSummaryActionSchema = z.object({
+  label: z
+    .string()
+    .describe("Action label, e.g. 'Providers near me'"),
+  subtitle: z
+    .string()
+    .describe("Brief description, e.g. '3 in-network matches'"),
+});
 
-// ── Care Summary (sidebar) ────────────────────────────────────────────────────
+const careSummarySchema = z.object({
+  title: z.string().describe("Card title, typically 'Care summary'"),
+  subtitle: z
+    .string()
+    .describe("Brief context, e.g. 'Knee pain · Today'"),
+  stats: z.array(careStatSchema).min(2).max(6),
+  primaryAction: z.object({
+    label: z
+      .string()
+      .describe("Primary CTA button label, e.g. 'Book physiotherapy →'"),
+  }),
+  actions: z.array(careSummaryActionSchema).max(4),
+});
 
-export type StatVariant = "neutral" | "warn" | "positive";
+// ── Benefits Snapshot (sidebar) ──────────────────────────────────────────────
 
-export interface CareStat {
-  label: string;
-  value: string;
-  variant: StatVariant;
-}
+const benefitSnapshotItemSchema = z.object({
+  label: z
+    .string()
+    .describe("Benefit category, e.g. 'Physiotherapy'"),
+  value: z
+    .string()
+    .describe("Remaining balance or status, e.g. '$800 remaining', 'Active'"),
+  variant: statVariantSchema,
+});
 
-export interface CareSummaryAction {
-  id: string;
-  label: string;
-  subtitle: string;
-  href?: string;
-}
+const benefitsSnapshotSchema = z.object({
+  planName: z
+    .string()
+    .describe("Insurance plan name, e.g. 'GreenShield Flex'"),
+  items: z.array(benefitSnapshotItemSchema).min(1).max(6),
+});
 
-export interface CareSummary {
-  title: string;
-  subtitle: string;
-  stats: CareStat[];
-  actions: CareSummaryAction[];
-}
+// ── Full Payload ─────────────────────────────────────────────────────────────
 
-// ── Full payload ──────────────────────────────────────────────────────────────
+export const recommendationPayloadSchema = z.object({
+  profile: profileCardSchema,
+  urgency: urgencyBarSchema,
+  recommendation: primaryRecommendationSchema,
+  insights: z.array(insightSchema).min(1).max(4),
+  coverage: coverageSchema,
+  careResources: z.array(careResourceSchema).min(1).max(5),
+  careSummary: careSummarySchema,
+  benefitsSnapshot: benefitsSnapshotSchema
+    .optional()
+    .describe("Include only when insurance/benefits details are known"),
+});
 
-export interface RecommendationPayload {
-  journeySteps: JourneyStep[];
-  hero: RecommendationHero;
-  profileSituation: ProfileSituation;
-  primaryRecommendation: PrimaryRecommendation;
-  insights: Insight[];
-  advocacy: AdvocacyItem[];
-  insurance: InsuranceEligibility;
-  careSummary: CareSummary;
-}
+// ── Inferred TypeScript types ────────────────────────────────────────────────
+
+export type BadgeVariant = z.infer<typeof badgeVariantSchema>;
+export type ColorVariant = z.infer<typeof colorVariantSchema>;
+export type StatusVariant = z.infer<typeof statusVariantSchema>;
+export type CoverageStatus = z.infer<typeof coverageStatusSchema>;
+export type UrgencyVariant = z.infer<typeof urgencyVariantSchema>;
+export type StatVariant = z.infer<typeof statVariantSchema>;
+
+export type ProfileBadge = z.infer<typeof profileBadgeSchema>;
+export type ProfileFact = z.infer<typeof profileFactSchema>;
+export type ProfileColumn = z.infer<typeof profileColumnSchema>;
+export type ProfileCard = z.infer<typeof profileCardSchema>;
+export type UrgencyBar = z.infer<typeof urgencyBarSchema>;
+export type ActionRow = z.infer<typeof actionRowSchema>;
+export type PrimaryRecommendation = z.infer<typeof primaryRecommendationSchema>;
+export type InsightBar = z.infer<typeof insightBarSchema>;
+export type Insight = z.infer<typeof insightSchema>;
+export type CoverageRow = z.infer<typeof coverageRowSchema>;
+export type BenefitAction = z.infer<typeof benefitActionSchema>;
+export type CoveragePlan = z.infer<typeof coveragePlanSchema>;
+export type Coverage = z.infer<typeof coverageSchema>;
+export type CareResource = z.infer<typeof careResourceSchema>;
+export type CareStat = z.infer<typeof careStatSchema>;
+export type CareSummaryAction = z.infer<typeof careSummaryActionSchema>;
+export type CareSummary = z.infer<typeof careSummarySchema>;
+export type BenefitSnapshotItem = z.infer<typeof benefitSnapshotItemSchema>;
+export type BenefitsSnapshot = z.infer<typeof benefitsSnapshotSchema>;
+export type RecommendationPayload = z.infer<typeof recommendationPayloadSchema>;
