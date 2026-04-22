@@ -697,11 +697,10 @@ function ChatScreen({
                 });
               }}
             />
-            ) : pending && SERVER_SIDE_TOOLS.has(pending.toolName) ? (
-              /* Server-side tool executing — just show a thinking indicator */
-              <div className="mr-auto rounded-2xl border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] px-4 py-2.5 text-sm text-muted-foreground">
-                Thinking…
-              </div>
+          </div>
+        ) : pending && SERVER_SIDE_TOOLS.has(pending.toolName) ? (
+          <div className="mr-auto rounded-2xl border border-[rgba(24,95,165,0.12)] bg-[#F7F9FC] px-4 py-2.5 text-sm text-muted-foreground">
+            Thinking…
           </div>
         ) : pending ? (
           <div className="flex items-start gap-2 text-sm text-destructive">
