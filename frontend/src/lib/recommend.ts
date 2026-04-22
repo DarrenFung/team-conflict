@@ -325,7 +325,7 @@ ${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${att
   const generateOptions = {
     model: vertex(FAST_MODEL),
     providerOptions: {
-      google: { thinkingConfig: { thinkingBudget: 512/c } },
+      google: { thinkingConfig: { thinkingBudget: 512 } },
     },
     system: SYSTEM_PROMPT,
     ...(input.location
