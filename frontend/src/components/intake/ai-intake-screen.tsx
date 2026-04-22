@@ -13,12 +13,11 @@ import {
   lastAssistantMessageIsCompleteWithToolCalls,
   type UIMessage,
 } from "ai";
+import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { upload } from "@vercel/blob/client";
 import { findModule } from "@/modules/registry";
-import { PostIntakeAccountPrompt } from "@/components/intake/post-intake-account-prompt";
-import { DownloadPdfButton } from "@/components/intake/download-pdf-button";
 import { createEncounter } from "@/app/actions/encounter";
 import { recordAttachment } from "@/app/actions/attachments";
 import { AskLukeTopNav } from "@/components/layout/ask-luke-top-nav";
@@ -32,11 +31,6 @@ import {
   IntakeStage,
 } from "@/components/intake/intake-journey-shell";
 import { deriveTurns } from "@/lib/intake/derive-turns";
-import {
-  IntakeReviewSummary,
-  IntakeReviewSummarySkeleton,
-} from "@/components/intake/intake-review-summary";
-import type { PatientReview } from "@/app/api/intake/patient-review/route";
 
 const COMPLETION_MARKER = "[COMPLETE]";
 
@@ -464,10 +458,8 @@ function ChatScreen({
   const [browseIdx, setBrowseIdx] = useState<number>(0);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [review, setReview] = useState<PatientReview | null>(null);
-  const [reviewLoading, setReviewLoading] = useState(false);
-  const [reviewError, setReviewError] = useState<string | null>(null);
-  const reviewFetchedRef = useRef(false);
+  const router = useRouter();
+  const redirectedRef = useRef(false);
 
   const encounterIdRef = useRef<string | null>(null);
   const anonymousAccessTokenRef = useRef<string | undefined>(undefined);
@@ -520,37 +512,17 @@ function ChatScreen({
     return raw.includes(COMPLETION_MARKER);
   }, [messages, status]);
 
+  // Redirect to recommendation page once intake completes
   useEffect(() => {
-    if (!isComplete || reviewFetchedRef.current) return;
-    reviewFetchedRef.current = true;
-    setReviewLoading(true);
-    fetch("/api/intake/patient-review", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages,
-        moduleResults,
-        greetingName,
-        encounterId: encounterIdRef.current,
-        ...(anonymousAccessTokenRef.current
-          ? { anonymousAccessToken: anonymousAccessTokenRef.current }
-          : {}),
-      }),
-    })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(await res.text());
-        return res.json() as Promise<PatientReview>;
-      })
-      .then((data) => {
-        setReview(data);
-        setReviewLoading(false);
-      })
-      .catch((err) => {
-        console.error("[intake-review] fetch failed", err);
-        setReviewError("We couldn't generate your summary. Please try again.");
-        setReviewLoading(false);
-      });
-  }, [isComplete, messages, moduleResults, greetingName]);
+    if (!isComplete || redirectedRef.current) return;
+    redirectedRef.current = true;
+    const eid = encounterIdRef.current;
+    if (!eid) return;
+    const tokenParam = anonymousAccessTokenRef.current
+      ? `?token=${anonymousAccessTokenRef.current}`
+      : "";
+    router.push(`/recommendations/${eid}${tokenParam}`);
+  }, [isComplete, router]);
 
   const isStreaming = status === "submitted" || status === "streaming";
 
@@ -652,29 +624,15 @@ function ChatScreen({
             </div>
           </div>
         ) : isComplete ? (
-          // ── Completion / Review ──────────────────────────────────────────
+          // ── Redirecting to recommendation page ─────────────────────────
           <div
             key="complete"
-            className="flex flex-col gap-6"
+            className="flex flex-col items-center gap-4 py-16"
           >
-            {!review && !reviewError ? (
-              <IntakeReviewSummarySkeleton />
-            ) : reviewError ? (
-              <div className="rounded-2xl border border-destructive/20 bg-destructive/5 p-5 text-sm text-destructive">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                  <p>{reviewError}</p>
-                </div>
-              </div>
-            ) : review ? (
-              <IntakeReviewSummary review={review} />
-            ) : null}
-            <DownloadPdfButton
-              messages={messages}
-              greetingName={greetingName}
-              moduleResults={moduleResults}
-            />
-            <PostIntakeAccountPrompt />
+            <Loader2 className="size-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">
+              Preparing your recommendation&hellip;
+            </p>
           </div>
         ) : pending && activeModule ? (
           // ── Module stage ─────────────────────────────────────────────────

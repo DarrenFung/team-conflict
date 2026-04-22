@@ -215,6 +215,13 @@ export async function POST(req: Request) {
           encounterId,
           userId: user.id,
         });
+
+        // Persist the structured recommendation so the results page can load it
+        await prisma.encounter.update({
+          where: { id: encounterId },
+          data: { recommendationPayload: JSON.parse(JSON.stringify(result)) },
+        });
+
         return result;
       },
     }),
