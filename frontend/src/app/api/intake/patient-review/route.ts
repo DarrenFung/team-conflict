@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     });
 
     const { object } = await generateObject({
-      model: vertex("gemini-2.0-flash-001"),
+      model: vertex("gemini-2.5-flash"),
       schema,
       prompt: `You are a medical intake summariser. Given the following intake conversation, extract a structured patient review.
 
