@@ -9,6 +9,9 @@ const isPublicRoute = createRouteMatcher([
   // getOrCreateActiveUser (Clerk-authed users or cookie-backed guests).
   "/api/chat",
   "/api/attachments/upload",
+  // The recommendation page handles its own auth via owner check + anonymous
+  // access token, so Clerk middleware should not gate it.
+  "/recommendations(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
