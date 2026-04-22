@@ -16,24 +16,26 @@ datasource db {
 // `id` is a stable cuid — everything downstream (encounters, documents) keys
 // off it and doesn't care which population the user is in.
 model User {
-  id          String       @id @default(cuid())
-  clerkId     String?      @unique
-  email       String?      @unique
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  encounters  Encounter[]
-  attachments Attachment[]
+  id               String                @id @default(cuid())
+  clerkId          String?               @unique
+  email            String?               @unique
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  encounters       Encounter[]
+  attachments      Attachment[]
+  personalizations PersonalizationData[]
 }
 
 model Encounter {
-  id                      String        @id @default(cuid())
+  id                      String                @id @default(cuid())
   userId                  String?
-  anonymousAccessToken    String?       @unique
-  encounterType           String?       // "clinical" | "non-clinical" | "emerg" — set after recommendation
+  anonymousAccessToken    String?               @unique
+  encounterType           String?               // "clinical" | "non-clinical" | "emerg" — set after recommendation
   recommendationPayload   Json?
-  createdAt               DateTime      @default(now())
-  user                    User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt               DateTime              @default(now())
+  user                    User?                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   attachments             Attachment[]
+  personalization         PersonalizationData?
 
   @@index([userId])
 }
@@ -67,4 +69,18 @@ model Resource {
   title   String
   content String
   type    String // "article" | "guidance"
+}
+
+model PersonalizationData {
+  id                  String    @id @default(cuid())
+  encounterId         String    @unique
+  userId              String?
+  location            Json?
+  healthProfile       Json?
+  eap                 Json?
+  wearableConnections String[]
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  encounter           Encounter @relation(fields: [encounterId], references: [id], onDelete: Cascade)
+  user                User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
 }

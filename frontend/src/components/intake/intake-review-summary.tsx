@@ -110,6 +110,28 @@ export function IntakeReviewSummary({ review }: { review: PatientReview }) {
 
   const { location, planType, urgency, benefitStatus } = review.tags;
 
+  if (review.sections.length === 0) {
+    return (
+      <div className="animate-in fade-in-0 slide-in-from-bottom-4 duration-300 space-y-4">
+        <h1 className="font-[family-name:var(--font-dm-serif)] text-[clamp(28px,5vw,40px)] leading-[1.2] tracking-[-0.5px] text-[#0E1420]">
+          Ready to continue
+        </h1>
+        <div className="flex items-start gap-3 rounded-xl border border-[rgba(24,95,165,0.15)] bg-[#E6F1FB] px-4 py-3.5">
+          <span
+            aria-hidden
+            className="mt-0.5 flex size-[22px] shrink-0 items-center justify-center rounded-full bg-primary font-[family-name:var(--font-dm-serif)] text-[11px] text-white"
+          >
+            L
+          </span>
+          <p className="text-[13px] leading-[1.55] text-[#0e4a87]">
+            We weren&apos;t able to generate a summary this time. You can still
+            continue to personalize your care pathway.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="animate-in fade-in-0 slide-in-from-bottom-4 duration-300 space-y-6">
       {/* Eyebrow */}

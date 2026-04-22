@@ -170,6 +170,9 @@ function normalizeIntakeContent(raw: unknown): IntakeContent | undefined {
 }
 
 function normalizeIntakeState(raw: unknown): IntakeState {
+  // #region agent log
+  import("fs").then(fs => fs.appendFileSync('/Users/aprilli/team-conflict/.cursor/debug-3bc374.log', JSON.stringify({sessionId:'3bc374',runId:'post-fix',hypothesisId:'H-B',location:'firsthx.ts:normalizeIntakeState',message:'raw API response',data:{raw},timestamp:Date.now()})+'\n')).catch(()=>{});
+  // #endregion
   const s = asRecord(raw);
   if (!s) throw new Error("Invalid intake response");
 
@@ -179,8 +182,13 @@ function normalizeIntakeState(raw: unknown): IntakeState {
   const statusRaw = coalesceString(
     s.intakeStatus, s.IntakeStatus, s.status, s.Status,
   );
+  // Treat only the known "still answerable" statuses as inProgress.
+  // All other statuses (e.g. "completed", "consentDeclined", and any future
+  // terminal states) are mapped to "completed" so the component calls
+  // onComplete instead of trying to submit another answer.
+  const answerableStatuses = new Set(["inprogress", "opened"]);
   const intakeStatus: "inProgress" | "completed" =
-    statusRaw.toLowerCase() === "completed" ? "completed" : "inProgress";
+    answerableStatuses.has(statusRaw.toLowerCase()) ? "inProgress" : "completed";
 
   const contentRaw =
     s.content ?? s.Content ?? s.question ?? s.Question ??
@@ -269,6 +277,10 @@ export async function answerQuestion(
   });
 
   if (!res.ok) {
+    // #region agent log
+    const errBody = await res.text().catch(() => "(could not read body)");
+    const fs = await import("fs"); fs.appendFileSync('/Users/aprilli/team-conflict/.cursor/debug-3bc374.log', JSON.stringify({sessionId:'3bc374',runId:'post-fix',hypothesisId:'H-C,H-D',location:'firsthx.ts:answerQuestion',message:'API error response',data:{status:res.status,statusText:res.statusText,body:errBody,contentId,sentData:data},timestamp:Date.now()})+'\n');
+    // #endregion
     throw new Error(`Failed to submit intake answer: ${res.statusText}`);
   }
 
