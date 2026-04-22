@@ -473,13 +473,8 @@ export function EmergencyRecommendationPage({
   return (
     <div className="min-h-svh bg-[#F7F9FC]">
       <AskLukeTopNav />
-      <div className="fixed inset-x-0 top-[60px] z-50 border-b border-[rgba(24,95,165,0.12)] bg-white/95 pt-2 backdrop-blur-[10px]">
+      <div className="fixed inset-x-0 top-[10px] z-50 border-b border-[rgba(24,95,165,0.12)] bg-white/95 pt-2 backdrop-blur-[10px]">
         <IntakeJourneyBar active="recommendation" />
-      </div>
-
-      {/* Fixed top progress bar — full red fill for emergency */}
-      <div className="fixed top-[96px] inset-x-0 z-[99] h-0.5 bg-[#e5e7eb]">
-        <div className="h-0.5 w-full bg-gradient-to-r from-[#A32D2D] to-[#e85d3a]" />
       </div>
 
       <div className="mx-auto max-w-[1040px] px-8 pt-[116px] pb-[100px] max-md:px-5 max-md:pb-[60px]">
