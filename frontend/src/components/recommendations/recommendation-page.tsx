@@ -10,6 +10,7 @@ import { CoverageSection } from "./coverage-section";
 import { CareResources } from "./care-resources";
 import { CareSummaryCard } from "./care-summary-card";
 import { BenefitsSnapshotCard } from "./benefits-snapshot-card";
+import { SourceArticles } from "./source-articles";
 import { MedicalDisclaimer } from "./medical-disclaimer";
 
 export function RecommendationPage({ data }: { data: RecommendationPayload }) {
@@ -36,6 +37,9 @@ export function RecommendationPage({ data }: { data: RecommendationPayload }) {
             <KeyInsights insights={data.insights} />
             <CoverageSection coverage={data.coverage} />
             <CareResources resources={data.careResources} />
+            {data.sourceArticles && data.sourceArticles.length > 0 && (
+              <SourceArticles articles={data.sourceArticles} />
+            )}
             <MedicalDisclaimer />
           </div>
 

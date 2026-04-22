@@ -67,6 +67,7 @@ async function main() {
     console.error(`No .md files found in ${articlesDir}`);
     process.exit(1);
   }
+
   console.log(`Found ${files.length} Health811 articles in ${articlesDir}`);
   for (const file of files) {
     const content = readFileSync(join(articlesDir, file), "utf-8");

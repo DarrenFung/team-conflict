@@ -326,5 +326,15 @@ ${textRecommendation}`,
 
   console.log("[recommend] Phase 2 complete — structured payload generated");
 
-  return structuredResult.output;
+  // Attach top 3 Health811 source articles used for this recommendation.
+  // The selection LLM returns IDs roughly in relevance order, so take the
+  // first 3 that matched actual articles.
+  const HEALTH811_BASE =
+    "https://health811.ontario.ca/static/guest/medical-library/condition?name=";
+  const sourceArticles = selectedArticles.slice(0, 3).map((a) => ({
+    title: a.title,
+    url: `${HEALTH811_BASE}${encodeURIComponent(a.title)}`,
+  }));
+
+  return { ...structuredResult.output, sourceArticles };
 }

@@ -263,6 +263,13 @@ const benefitsSnapshotSchema = z.object({
   items: z.array(benefitSnapshotItemSchema).min(1).max(6),
 });
 
+// ── Source Articles ──────────────────────────────────────────────────────────
+
+const sourceArticleSchema = z.object({
+  title: z.string(),
+  url: z.string(),
+});
+
 // ── Full Payload ─────────────────────────────────────────────────────────────
 
 export const recommendationPayloadSchema = z.object({
@@ -276,6 +283,11 @@ export const recommendationPayloadSchema = z.object({
   benefitsSnapshot: benefitsSnapshotSchema
     .optional()
     .describe("Include only when insurance/benefits details are known"),
+  sourceArticles: z
+    .array(sourceArticleSchema)
+    .max(3)
+    .optional()
+    .describe("Top Health811 source articles used for this recommendation"),
 });
 
 // ── Inferred TypeScript types ────────────────────────────────────────────────
@@ -306,4 +318,5 @@ export type CareSummaryAction = z.infer<typeof careSummaryActionSchema>;
 export type CareSummary = z.infer<typeof careSummarySchema>;
 export type BenefitSnapshotItem = z.infer<typeof benefitSnapshotItemSchema>;
 export type BenefitsSnapshot = z.infer<typeof benefitsSnapshotSchema>;
+export type SourceArticle = z.infer<typeof sourceArticleSchema>;
 export type RecommendationPayload = z.infer<typeof recommendationPayloadSchema>;

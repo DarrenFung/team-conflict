@@ -180,4 +180,10 @@ export const mockRecommendationPayload: RecommendationPayload = {
       { label: "Drug plan", value: "Active", variant: "teal" },
     ],
   },
+
+  sourceArticles: [
+    { title: "Patellofemoral pain syndrome", url: "https://health811.ontario.ca/static/guest/medical-library/condition?name=patellofemoral%20pain%20syndrome" },
+    { title: "Knee bursitis", url: "https://health811.ontario.ca/static/guest/medical-library/condition?name=knee%20bursitis" },
+    { title: "Meniscus tear", url: "https://health811.ontario.ca/static/guest/medical-library/condition?name=meniscus%20tear" },
+  ],
 };
