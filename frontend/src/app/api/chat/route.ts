@@ -232,8 +232,11 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: vertex("gemini-2.5-flash"),
+    // The chat loop is classification + tool dispatch, not open-ended
+    // reasoning. Each thinking token adds TTFT, and the loop runs up to
+    // 20 steps — leaving thinking on was ~5s/turn of pure thought-gen.
     providerOptions: {
-      google: { thinkingConfig: { thinkingBudget: 1024 } },
+      google: { thinkingConfig: { thinkingBudget: 0 } },
     },
     system: SYSTEM_PROMPT,
     messages: await convertToModelMessages(messages),

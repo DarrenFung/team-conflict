@@ -11,7 +11,10 @@ import {
   type RecommendationPayload,
 } from "@/types/recommendation";
 
-const MODEL = "gemini-2.5-flash";
+// All recommend-path LLM calls run on flash-lite. The heavy-lifting
+// clinical prompt already carries all the reference material, so the model
+// is mostly summarizing/routing rather than reasoning from scratch.
+const FAST_MODEL = "gemini-2.5-flash-lite";
 const MAX_ARTICLES = 20;
 
 const SYSTEM_PROMPT = `You are a Canadian healthcare navigation assistant. Your job is to help Ontario residents understand what kind of care they need based on their symptoms, and where they can access it.
@@ -93,6 +96,47 @@ export type RecommendInput = {
 
 type FilePart = { type: "file"; data: Uint8Array; mediaType: string };
 
+// Mime types Vertex Gemini accepts as file parts. Anything else (html,
+// octet-stream, etc.) gets rejected mid-request, triggering a retry of the
+// full 40K-token clinical prompt — so filter upfront.
+const GEMINI_SUPPORTED_MIMES = new Set([
+  "application/pdf",
+  "text/plain",
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/heic",
+  "image/heif",
+  "image/gif",
+]);
+
+// Map common file extensions → Gemini-supported mime. Used to recover
+// attachments uploaded as application/octet-stream (the browser's fallback
+// when it can't identify the type).
+const EXTENSION_MIME: Record<string, string> = {
+  pdf: "application/pdf",
+  txt: "text/plain",
+  md: "text/plain",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  heic: "image/heic",
+  heif: "image/heif",
+  gif: "image/gif",
+};
+
+function resolveMediaType(
+  rawMime: string,
+  filename: string,
+): string | null {
+  if (GEMINI_SUPPORTED_MIMES.has(rawMime)) return rawMime;
+  const ext = filename.split(".").pop()?.toLowerCase();
+  if (ext && EXTENSION_MIME[ext]) return EXTENSION_MIME[ext];
+  return null;
+}
+
 async function loadGuidance() {
   return prisma.resource.findMany({ where: { type: "guidance" } });
 }
@@ -108,11 +152,7 @@ async function selectArticles(symptoms: string) {
     .join("\n");
 
   const selectionResult = await generateText({
-    model: vertex(MODEL),
-    // Pure relevance ranking over titles — minimal reasoning required.
-    providerOptions: {
-      google: { thinkingConfig: { thinkingBudget: 512 } },
-    },
+    model: vertex(FAST_MODEL),
     output: Output.object({
       schema: z.object({
         articleIds: z
@@ -187,6 +227,15 @@ async function loadAttachments(opts: {
 
   const downloadResults = await Promise.all(
     attachments.map(async (a) => {
+      const rawMime = a.contentType;
+      const mediaType = resolveMediaType(rawMime, a.originalFilename);
+      if (!mediaType) {
+        console.warn(
+          `[recommend] Skipping ${a.originalFilename}: unsupported mime ${rawMime} (no extension fallback)`,
+        );
+        return null;
+      }
+
       try {
         const result = await get(a.url, { access: "private" });
         if (!result) {
@@ -198,11 +247,9 @@ async function loadAttachments(opts: {
           console.warn(`[recommend] Skipping empty attachment: ${a.originalFilename}`);
           return null;
         }
-        return {
-          type: "file" as const,
-          data,
-          mediaType: result.blob.contentType || a.contentType,
-        };
+        // Prefer the resolved type; blob-metadata mime is sometimes the same
+        // unsupported value we just mapped away from.
+        return { type: "file" as const, data, mediaType };
       } catch (err) {
         console.warn(`[recommend] Failed to download attachment ${a.originalFilename}:`, err);
         return null;
@@ -271,13 +318,14 @@ ${guidanceByTitle["ED Diversion Principles"] ?? "(Not available)"}
 ${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${attachmentContext}`;
 
   // Generate recommendation — try with attachments, then progressively
-  // drop files that Gemini can't process. The main clinical reasoning
-  // call — this is where thinking actually helps, so budget is higher
-  // than the routing calls but still bounded to keep TTFT reasonable.
+  // drop files that Gemini can't process. Flash-lite with a tiny thinking
+  // budget: the 40K-token prompt already contains all the clinical
+  // reference material, so the model is mostly summarizing and routing,
+  // not reasoning from scratch.
   const generateOptions = {
-    model: vertex(MODEL),
+    model: vertex(FAST_MODEL),
     providerOptions: {
-      google: { thinkingConfig: { thinkingBudget: 2048 } },
+      google: { thinkingConfig: { thinkingBudget: 512/c } },
     },
     system: SYSTEM_PROMPT,
     ...(input.location
@@ -328,13 +376,9 @@ ${guidanceByTitle["ED Diversion Presenting Concerns"] ?? "(Not available)"}${att
   );
 
   // Phase 2: Structure the text recommendation into a RecommendationPayload.
-  // Pure shape-transformation — no reasoning to speak of, so thinking is
-  // kept low.
+  // Pure shape-transformation — no reasoning required, so run on flash-lite.
   const structuredResult = await generateText({
-    model: vertex(MODEL),
-    providerOptions: {
-      google: { thinkingConfig: { thinkingBudget: 512 } },
-    },
+    model: vertex(FAST_MODEL),
     output: Output.object({ schema: recommendationPayloadSchema }),
     system: STRUCTURING_SYSTEM_PROMPT,
     prompt: `## Patient Intake Summary

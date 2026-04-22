@@ -6,7 +6,9 @@ import { prisma } from "@/lib/db";
 import { modules } from "@/modules/registry";
 import { logCachedUsage } from "@/lib/llm-metrics";
 
-const MODEL = "gemini-2.5-flash";
+// Routing decision over a short rule table — flash-lite is plenty, and
+// ~2-3× faster than flash with thinking disabled by default.
+const MODEL = "gemini-2.5-flash-lite";
 
 const requiredInputSchema = z.object({
   tool: z
@@ -107,10 +109,6 @@ export async function evaluateInputRequirements(
 
   const result = await generateText({
     model: vertex(MODEL),
-    // Routing decision over a short rule table — not worth heavy thinking.
-    providerOptions: {
-      google: { thinkingConfig: { thinkingBudget: 512 } },
-    },
     output: Output.object({ schema: llmOutputSchema }),
     system: SYSTEM_PROMPT,
     prompt: `## Conversation Summary
