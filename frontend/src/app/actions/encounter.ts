@@ -5,6 +5,14 @@ import { auth } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/db";
 import { getOrCreateActiveUser } from "@/lib/auth";
 
+export async function isRecommendationReady(encounterId: string): Promise<boolean> {
+  const encounter = await prisma.encounter.findUnique({
+    where: { id: encounterId },
+    select: { recommendationPayload: true },
+  });
+  return encounter?.recommendationPayload != null;
+}
+
 export async function createEncounter(): Promise<{ id: string; anonymousAccessToken: string }> {
   const { userId: clerkUserId } = await auth();
 

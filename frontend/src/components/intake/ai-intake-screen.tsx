@@ -18,7 +18,7 @@ import { AlertCircle, Loader2, Send } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { upload } from "@vercel/blob/client";
 import { findModule } from "@/modules/registry";
-import { createEncounter } from "@/app/actions/encounter";
+import { createEncounter, isRecommendationReady } from "@/app/actions/encounter";
 import { recordAttachment } from "@/app/actions/attachments";
 import { AskLukeTopNav } from "@/components/layout/ask-luke-top-nav";
 import { AskLukeWordmark } from "@/components/landing/ask-luke-wordmark";
@@ -605,6 +605,27 @@ function ChatScreen({
     setAttachedFiles([]);
   }, [browseIdx]);
 
+  // Poll for recommendation readiness, then navigate.
+  useEffect(() => {
+    if (intakePhase !== "recommendation") return;
+    const eid = encounterIdRef.current;
+    if (!eid) return;
+
+    let cancelled = false;
+    const poll = async () => {
+      while (!cancelled) {
+        const ready = await isRecommendationReady(eid);
+        if (ready && !cancelled) {
+          handleContinueToRecommendation();
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+    };
+    poll();
+    return () => { cancelled = true; };
+  }, [intakePhase]);
+
   const currentTurn = turns[browseIdx] ?? null;
   const isLatestTurn = browseIdx === latestIdx;
   const canEdit =
@@ -716,6 +737,12 @@ function ChatScreen({
             anonymousAccessToken={anonymousAccessTokenRef.current}
             onComplete={() => setIntakePhase("recommendation")}
           />
+        ) : isComplete && intakePhase === "recommendation" ? (
+          // ── Waiting for recommendation to generate, then navigating ──────
+          <div className="flex flex-col items-center gap-6 py-24">
+            <Loader2 className="size-8 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Generating your recommendation…</p>
+          </div>
         ) : isComplete ? (
           // ── Redirecting to recommendation page ─────────────────────────
           <div
