@@ -8,6 +8,7 @@ const isPublicRoute = createRouteMatcher([
   // Guests hit these too — the routes handle their own user resolution via
   // getOrCreateActiveUser (Clerk-authed users or cookie-backed guests).
   "/api/chat",
+  "/api/intake/patient-review",
   "/api/attachments/upload",
   // The recommendation page handles its own auth via owner check + anonymous
   // access token, so Clerk middleware should not gate it.
